@@ -11,7 +11,7 @@ import {
   ToastAndroid,
 } from 'react-native';
 import {Text, TextInput, Button, Chip, IconButton} from 'react-native-paper';
-import MapView, {Marker, PROVIDER_GOOGLE} from 'react-native-maps';
+import MapView, {Marker} from 'react-native-maps';
 import Clipboard from '@react-native-clipboard/clipboard';
 import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
 import {useNavigation, useRoute} from '@react-navigation/native';
@@ -243,7 +243,6 @@ export default function PlaceDetailScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Mini Map */}
         <MapView
-          provider={PROVIDER_GOOGLE}
           style={styles.map}
           scrollEnabled={false}
           zoomEnabled={false}

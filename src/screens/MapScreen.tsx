@@ -9,7 +9,6 @@ import {
 } from 'react-native';
 import MapView, {
   Marker,
-  PROVIDER_GOOGLE,
   MapPressEvent,
   Region,
 } from 'react-native-maps';
@@ -41,8 +40,6 @@ export default function MapScreen() {
   const snapPoints = useMemo(() => ['35%'], []);
 
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
-  const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
-
   useEffect(() => {
     if (places.length > 0 && mapRef.current) {
       const coords = places.map(p => ({
@@ -105,10 +102,6 @@ export default function MapScreen() {
     );
   };
 
-  const handleToggleMapType = () => {
-    setMapType(prev => (prev === 'standard' ? 'satellite' : 'standard'));
-  };
-
   const handleMarkerPress = (place: Place) => {
     setSelectedPlace(place);
     bottomSheetRef.current?.snapToIndex(0);
@@ -151,10 +144,8 @@ export default function MapScreen() {
     <View style={styles.container}>
       <MapView
         ref={mapRef}
-        provider={PROVIDER_GOOGLE}
         style={styles.map}
         initialRegion={DEFAULT_REGION}
-        mapType={mapType}
         showsUserLocation
         showsMyLocationButton={false}
         onLongPress={handleLongPress}>
@@ -177,11 +168,6 @@ export default function MapScreen() {
       <View style={styles.buttonStrip}>
         <Pressable style={styles.mapBtn} onPress={handleMyLocation}>
           <Text style={styles.mapBtnText}>📡</Text>
-        </Pressable>
-        <Pressable style={styles.mapBtn} onPress={handleToggleMapType}>
-          <Text style={styles.mapBtnText}>
-            {mapType === 'standard' ? '🛰' : '🗺'}
-          </Text>
         </Pressable>
       </View>
 
