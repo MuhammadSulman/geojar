@@ -53,16 +53,10 @@ export const usePlacesStore = create<PlacesState>()(
     },
 
     addPlace: async data => {
-      try {
-        const place = await queries.createPlace(data);
-        set(state => {
-          state.places.unshift(place);
-        });
-      } catch (e) {
-        set(state => {
-          state.error = (e as Error).message;
-        });
-      }
+      const place = await queries.createPlace(data);
+      set(state => {
+        state.places.unshift(place);
+      });
     },
 
     updatePlace: async (id, data) => {

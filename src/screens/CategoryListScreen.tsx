@@ -1,15 +1,15 @@
-import React, {useEffect, useMemo} from 'react';
+import React, {useCallback, useMemo} from 'react';
 import {View, SectionList, StyleSheet} from 'react-native';
 import {Text} from 'react-native-paper';
-import {useNavigation} from '@react-navigation/native';
+import {useNavigation, useFocusEffect} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {Place} from '@/types';
-import type {HomeStackParamList} from '@/navigation/types';
+import type {CategoryStackParamList} from '@/navigation/types';
 import {CATEGORIES} from '@/constants/categories';
 import {usePlacesStore} from '@/store/placesStore';
 import PlaceCard from '@/components/PlaceCard';
 
-type Nav = NativeStackNavigationProp<HomeStackParamList, 'Home'>;
+type Nav = NativeStackNavigationProp<CategoryStackParamList, 'CategoryList'>;
 
 interface Section {
   title: string;
@@ -25,9 +25,12 @@ export default function CategoryListScreen() {
   const loadPlaces = usePlacesStore(s => s.loadPlaces);
   const toggleFavorite = usePlacesStore(s => s.toggleFavorite);
 
-  useEffect(() => {
-    loadPlaces();
-  }, [loadPlaces]);
+  // Reload places every time this tab gains focus
+  useFocusEffect(
+    useCallback(() => {
+      loadPlaces();
+    }, [loadPlaces]),
+  );
 
   const sections: Section[] = useMemo(() => {
     return CATEGORIES.map(cat => {
@@ -94,9 +97,11 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#F0F2F8',
-    paddingTop: 56,
+    paddingTop: 48,
     paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingBottom: 6,
+    fontSize: 20,
+    fontWeight: '700',
   },
   listContent: {
     paddingBottom: 24,
@@ -105,24 +110,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: 20,
-    paddingBottom: 10,
-    gap: 8,
+    paddingTop: 12,
+    paddingBottom: 4,
+    gap: 6,
   },
   sectionEmoji: {
-    fontSize: 20,
+    fontSize: 14,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 13,
     fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   badge: {
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 2,
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
   },
   badgeText: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '600',
   },
   empty: {
@@ -133,6 +140,6 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     color: '#7B82A0',
-    fontSize: 16,
+    fontSize: 14,
   },
 });

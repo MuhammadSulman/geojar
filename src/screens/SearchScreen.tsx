@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useRef, useState} from 'react';
+import React, {useCallback, useState} from 'react';
 import {
   View,
   FlatList,
@@ -7,39 +7,31 @@ import {
   Alert,
   Linking,
   StyleSheet,
+  TextInput,
+  ScrollView,
 } from 'react-native';
-import {Searchbar, Text, Chip, Menu, IconButton} from 'react-native-paper';
+import {Text} from 'react-native-paper';
 import Geolocation from 'react-native-geolocation-service';
 import {check, request, PERMISSIONS, RESULTS} from 'react-native-permissions';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import {useNavigation} from '@react-navigation/native';
+import {useNavigation, useFocusEffect} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
-import type {Place, CategoryName, SortOrder} from '@/types';
-import type {HomeStackParamList} from '@/navigation/types';
+import type {CategoryName, SortOrder} from '@/types';
+import type {SearchStackParamList} from '@/navigation/types';
 import {CATEGORIES} from '@/constants/categories';
-import {searchPlaces} from '@/database/queries';
 import PlaceCard from '@/components/PlaceCard';
 import {usePlacesStore} from '@/store/placesStore';
 
-type Nav = NativeStackNavigationProp<HomeStackParamList, 'Home'>;
+type Nav = NativeStackNavigationProp<SearchStackParamList, 'Search'>;
 
-const RECENT_KEY = 'recent_searches';
-const MAX_RECENT = 5;
-
-const SORT_OPTIONS: {label: string; value: SortOrder}[] = [
-  {label: 'Newest', value: 'newest'},
-  {label: 'Oldest', value: 'oldest'},
-  {label: 'A → Z', value: 'az'},
-  {label: 'Nearest to Me', value: 'nearest'},
+const SORT_OPTS: {label: string; value: SortOrder}[] = [
+  {label: 'New', value: 'newest'},
+  {label: 'Old', value: 'oldest'},
+  {label: 'A-Z', value: 'az'},
+  {label: 'Near', value: 'nearest'},
 ];
 
-function haversineDistance(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number,
-): number {
+function haversine(lat1: number, lon1: number, lat2: number, lon2: number) {
   const toRad = (d: number) => (d * Math.PI) / 180;
   const R = 6371;
   const dLat = toRad(lat2 - lat1);
@@ -52,293 +44,144 @@ function haversineDistance(
 
 export default function SearchScreen() {
   const navigation = useNavigation<Nav>();
+  const places = usePlacesStore(s => s.places);
+  const loadPlaces = usePlacesStore(s => s.loadPlaces);
   const toggleFavorite = usePlacesStore(s => s.toggleFavorite);
 
   const [query, setQuery] = useState('');
-  const [activeCategory, setActiveCategory] = useState<CategoryName | null>(
-    null,
-  );
-  const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
-  const [results, setResults] = useState<Place[]>([]);
-  const [recentSearches, setRecentSearches] = useState<string[]>([]);
-  const [menuVisible, setMenuVisible] = useState(false);
-  const [userLocation, setUserLocation] = useState<{
-    latitude: number;
-    longitude: number;
-  } | null>(null);
+  const [activeCat, setActiveCat] = useState<CategoryName | null>(null);
+  const [sort, setSort] = useState<SortOrder>('newest');
+  const [userLoc, setUserLoc] = useState<{lat: number; lng: number} | null>(null);
 
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useFocusEffect(useCallback(() => { loadPlaces(); }, [loadPlaces]));
 
-  // Load recent searches on mount
-  useEffect(() => {
-    AsyncStorage.getItem(RECENT_KEY).then(raw => {
-      if (raw) {
-        try {
-          setRecentSearches(JSON.parse(raw));
-        } catch {}
-      }
-    });
-  }, []);
-
-  const saveRecentSearch = useCallback(async (term: string) => {
-    const trimmed = term.trim();
-    if (!trimmed) {
-      return;
-    }
-    const raw = await AsyncStorage.getItem(RECENT_KEY);
-    let list: string[] = [];
-    if (raw) {
-      try {
-        list = JSON.parse(raw);
-      } catch {}
-    }
-    list = [trimmed, ...list.filter(s => s !== trimmed)].slice(0, MAX_RECENT);
-    await AsyncStorage.setItem(RECENT_KEY, JSON.stringify(list));
-    setRecentSearches(list);
-  }, []);
-
-  const performSearch = useCallback(
-    async (q: string, cat: CategoryName | null) => {
-      const data = await searchPlaces(q, cat ?? undefined);
-      setResults(data);
-    },
-    [],
-  );
-
-  const sortResults = useCallback(
-    (data: Place[], order: SortOrder): Place[] => {
-      const sorted = [...data];
-      switch (order) {
-        case 'newest':
-          sorted.sort(
-            (a, b) =>
-              new Date(b.createdAt).getTime() -
-              new Date(a.createdAt).getTime(),
-          );
-          break;
-        case 'oldest':
-          sorted.sort(
-            (a, b) =>
-              new Date(a.createdAt).getTime() -
-              new Date(b.createdAt).getTime(),
-          );
-          break;
-        case 'az':
-          sorted.sort((a, b) => a.name.localeCompare(b.name));
-          break;
-        case 'nearest':
-          if (userLocation) {
-            sorted.sort(
-              (a, b) =>
-                haversineDistance(
-                  userLocation.latitude,
-                  userLocation.longitude,
-                  a.latitude,
-                  a.longitude,
-                ) -
-                haversineDistance(
-                  userLocation.latitude,
-                  userLocation.longitude,
-                  b.latitude,
-                  b.longitude,
-                ),
-            );
-          }
-          break;
-      }
-      return sorted;
-    },
-    [userLocation],
-  );
-
-  // Debounced search
-  useEffect(() => {
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-    }
-    if (!query.trim() && !activeCategory) {
-      setResults([]);
-      return;
-    }
-    debounceRef.current = setTimeout(async () => {
-      await performSearch(query, activeCategory);
-      if (query.trim()) {
-        saveRecentSearch(query);
-      }
-    }, 300);
-    return () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
-    };
-  }, [query, activeCategory, performSearch, saveRecentSearch]);
-
-  const sortedResults = sortResults(results, sortOrder);
-
-  const requestLocationAndSort = async () => {
-    const permission = Platform.select({
-      ios: PERMISSIONS.IOS.LOCATION_WHEN_IN_USE,
-      android: PERMISSIONS.ANDROID.ACCESS_FINE_LOCATION,
-    });
-    if (!permission) {
-      return;
-    }
-    let status = await check(permission);
-    if (status === RESULTS.DENIED) {
-      status = await request(permission);
-    }
-    if (status !== RESULTS.GRANTED && status !== RESULTS.LIMITED) {
-      Alert.alert(
-        'Location Permission Required',
-        'Enable location access to sort by distance.',
-        [
-          {text: 'Cancel', style: 'cancel'},
-          {text: 'Open Settings', onPress: () => Linking.openSettings()},
-        ],
+  const filtered = React.useMemo(() => {
+    let data = places;
+    if (activeCat) { data = data.filter(p => p.category === activeCat); }
+    if (query.trim()) {
+      const q = query.toLowerCase();
+      data = data.filter(
+        p => p.name.toLowerCase().includes(q) || (p.note && p.note.toLowerCase().includes(q)),
       );
-      return;
     }
-    Geolocation.getCurrentPosition(
-      pos => {
-        setUserLocation({
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-        });
-        setSortOrder('nearest');
-      },
-      err => Alert.alert('Location Error', err.message),
-      {enableHighAccuracy: true, timeout: 15000, maximumAge: 10000},
-    );
-  };
+    const sorted = [...data];
+    switch (sort) {
+      case 'newest': sorted.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()); break;
+      case 'oldest': sorted.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()); break;
+      case 'az': sorted.sort((a, b) => a.name.localeCompare(b.name)); break;
+      case 'nearest':
+        if (userLoc) {
+          sorted.sort((a, b) => haversine(userLoc.lat, userLoc.lng, a.latitude, a.longitude) - haversine(userLoc.lat, userLoc.lng, b.latitude, b.longitude));
+        }
+        break;
+    }
+    return sorted;
+  }, [places, query, activeCat, sort, userLoc]);
 
-  const handleSortSelect = (order: SortOrder) => {
-    setMenuVisible(false);
-    if (order === 'nearest') {
-      requestLocationAndSort();
+  const handleSort = (s: SortOrder) => {
+    if (s === 'nearest') {
+      const perm = Platform.select({
+        ios: PERMISSIONS.IOS.LOCATION_WHEN_IN_USE,
+        android: PERMISSIONS.ANDROID.ACCESS_FINE_LOCATION,
+      });
+      if (!perm) { return; }
+      check(perm).then(async status => {
+        if (status === RESULTS.DENIED) { status = await request(perm); }
+        if (status !== RESULTS.GRANTED && status !== RESULTS.LIMITED) {
+          Alert.alert('Location Required', 'Enable location to sort by distance.', [
+            {text: 'Cancel', style: 'cancel'},
+            {text: 'Settings', onPress: () => Linking.openSettings()},
+          ]);
+          return;
+        }
+        Geolocation.getCurrentPosition(
+          pos => { setUserLoc({lat: pos.coords.latitude, lng: pos.coords.longitude}); setSort('nearest'); },
+          err => Alert.alert('Error', err.message),
+          {enableHighAccuracy: true, timeout: 15000, maximumAge: 10000},
+        );
+      });
     } else {
-      setSortOrder(order);
+      setSort(s);
     }
   };
-
-  const handleRecentPress = (term: string) => {
-    setQuery(term);
-  };
-
-  const handlePlacePress = (place: Place) => {
-    navigation.navigate('PlaceDetail', {placeId: place.id});
-  };
-
-  const showEmpty = query.trim() || activeCategory;
 
   return (
     <View style={styles.container}>
-      {/* Search bar + sort */}
-      <View style={styles.header}>
-        <Searchbar
+      {/* Search bar */}
+      <View style={styles.searchBox}>
+        <Icon name="magnify" size={18} color="#7B82A0" />
+        <TextInput
+          style={styles.input}
           placeholder="Search places..."
+          placeholderTextColor="#555"
           value={query}
           onChangeText={setQuery}
-          autoFocus
-          style={styles.searchbar}
-          inputStyle={styles.searchInput}
-          iconColor="#7B82A0"
-          placeholderTextColor="#7B82A0"
+          returnKeyType="search"
         />
-        <Menu
-          visible={menuVisible}
-          onDismiss={() => setMenuVisible(false)}
-          anchor={
-            <IconButton
-              icon="sort"
-              iconColor="#7B82A0"
-              size={24}
-              onPress={() => setMenuVisible(true)}
-            />
-          }
-          contentStyle={styles.menuContent}>
-          {SORT_OPTIONS.map(opt => (
-            <Menu.Item
-              key={opt.value}
-              onPress={() => handleSortSelect(opt.value)}
-              title={opt.label}
-              leadingIcon={
-                sortOrder === opt.value ? 'check' : undefined
-              }
-            />
-          ))}
-        </Menu>
+        {query.length > 0 && (
+          <Pressable onPress={() => setQuery('')} hitSlop={8}>
+            <Icon name="close-circle" size={16} color="#555" />
+          </Pressable>
+        )}
       </View>
 
-      {/* Category chips */}
-      <FlatList
-        data={CATEGORIES}
+      {/* Filters: categories + sort */}
+      <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        keyExtractor={c => c.id}
-        contentContainerStyle={styles.chipList}
-        renderItem={({item}) => (
-          <Chip
-            selected={activeCategory === item.name}
-            onPress={() =>
-              setActiveCategory(prev =>
-                prev === item.name ? null : item.name,
-              )
-            }
-            style={[
-              styles.chip,
-              activeCategory === item.name && {
-                backgroundColor: item.color + '33',
-              },
-            ]}
-            textStyle={
-              activeCategory === item.name
-                ? {color: item.color}
-                : {color: '#F0F2F8'}
-            }
-            showSelectedOverlay>
-            {item.emoji} {item.name}
-          </Chip>
-        )}
-      />
+        style={styles.filterScroll}
+        contentContainerStyle={styles.filterRow}>
+        <Pressable
+          style={[styles.pill, !activeCat && styles.pillActive]}
+          onPress={() => setActiveCat(null)}>
+          <Text style={[styles.pillText, !activeCat && styles.pillTextActive]}>All</Text>
+        </Pressable>
+        {CATEGORIES.map(c => {
+          const on = activeCat === c.name;
+          return (
+            <Pressable
+              key={c.id}
+              style={[styles.pill, on && {backgroundColor: c.color + '22', borderColor: c.color + '44'}]}
+              onPress={() => setActiveCat(prev => (prev === c.name ? null : c.name))}>
+              <Text style={[styles.pillText, on && {color: c.color}]}>{c.emoji} {c.name}</Text>
+            </Pressable>
+          );
+        })}
+        <View style={styles.divider} />
+        {SORT_OPTS.map(o => {
+          const on = sort === o.value;
+          return (
+            <Pressable
+              key={o.value}
+              style={[styles.pill, on && styles.pillActive]}
+              onPress={() => handleSort(o.value)}>
+              <Text style={[styles.pillText, on && styles.pillTextActive]}>{o.label}</Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
 
-      {/* Results or recent searches */}
-      {!showEmpty ? (
-        <View style={styles.recentSection}>
-          <Text variant="titleSmall" style={styles.recentTitle}>
-            Recent Searches
+      {/* Results */}
+      {filtered.length === 0 ? (
+        <View style={styles.empty}>
+          <Icon
+            name={places.length === 0 ? 'map-marker-plus-outline' : 'magnify-close'}
+            size={40}
+            color="#2A2F42"
+          />
+          <Text style={styles.emptyText}>
+            {places.length === 0 ? 'No places saved yet' : 'No results'}
           </Text>
-          {recentSearches.length === 0 ? (
-            <Text style={styles.recentEmpty}>No recent searches</Text>
-          ) : (
-            recentSearches.map((term, idx) => (
-              <Pressable
-                key={idx}
-                style={styles.recentItem}
-                onPress={() => handleRecentPress(term)}>
-                <Icon name="history" size={18} color="#7B82A0" />
-                <Text style={styles.recentText}>{term}</Text>
-              </Pressable>
-            ))
-          )}
-        </View>
-      ) : sortedResults.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Icon name="map-search-outline" size={64} color="#2A2F42" />
-          <Text variant="titleMedium" style={styles.emptyTitle}>
-            No places found
-          </Text>
-          <Text style={styles.emptySubtitle}>Try a different search</Text>
         </View>
       ) : (
         <FlatList
-          data={sortedResults}
+          data={filtered}
           keyExtractor={p => p.id}
-          contentContainerStyle={styles.listContent}
           renderItem={({item}) => (
             <PlaceCard
               place={item}
               highlight={query}
-              onPress={() => handlePlacePress(item)}
+              onPress={() => navigation.navigate('PlaceDetail', {placeId: item.id})}
               onFavoritePress={() => toggleFavorite(item.id)}
             />
           )}
@@ -352,69 +195,69 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0D0F14',
+    paddingTop: 48,
   },
-  header: {
+  searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 56,
-    paddingHorizontal: 12,
-    paddingBottom: 8,
+    backgroundColor: '#1E2230',
+    borderRadius: 8,
+    marginHorizontal: 12,
+    paddingHorizontal: 8,
+    height: 36,
+    gap: 6,
+    marginBottom: 4,
   },
-  searchbar: {
+  input: {
     flex: 1,
-    backgroundColor: '#1E2230',
-    elevation: 0,
-  },
-  searchInput: {
     color: '#F0F2F8',
+    fontSize: 13,
+    paddingVertical: 0,
   },
-  menuContent: {
-    backgroundColor: '#1E2230',
+  filterScroll: {
+    flexGrow: 0,
+    marginTop: 4,
+    marginBottom: 8,
   },
-  chipList: {
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    gap: 8,
-  },
-  chip: {
-    backgroundColor: '#1E2230',
-  },
-  listContent: {
-    paddingTop: 8,
-    paddingBottom: 24,
-  },
-  recentSection: {
-    padding: 16,
-  },
-  recentTitle: {
-    color: '#7B82A0',
-    marginBottom: 12,
-  },
-  recentEmpty: {
-    color: '#2A2F42',
-    fontSize: 14,
-  },
-  recentItem: {
-    flexDirection: 'row',
+  filterRow: {
+    paddingHorizontal: 12,
+    gap: 4,
     alignItems: 'center',
-    paddingVertical: 10,
-    gap: 10,
   },
-  recentText: {
-    color: '#F0F2F8',
-    fontSize: 15,
+  pill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: '#1E2230',
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
-  emptyState: {
+  pillActive: {
+    backgroundColor: '#16A34A1A',
+    borderColor: '#16A34A44',
+  },
+  pillText: {
+    color: '#7B82A0',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  pillTextActive: {
+    color: '#16A34A',
+  },
+  divider: {
+    width: 1,
+    height: 12,
+    backgroundColor: '#2A2F42',
+    marginHorizontal: 1,
+  },
+  empty: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     gap: 8,
+    paddingBottom: 60,
   },
-  emptyTitle: {
-    color: '#F0F2F8',
-    marginTop: 12,
-  },
-  emptySubtitle: {
+  emptyText: {
     color: '#7B82A0',
     fontSize: 14,
   },

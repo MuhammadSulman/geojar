@@ -2,7 +2,14 @@ import React from 'react';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import type {MainTabParamList, HomeStackParamList, MapStackParamList, SettingsStackParamList} from './types';
+import type {
+  MainTabParamList,
+  HomeStackParamList,
+  MapStackParamList,
+  CategoryStackParamList,
+  SearchStackParamList,
+  SettingsStackParamList,
+} from './types';
 import HomeScreen from '@/screens/HomeScreen';
 import AddPlaceScreen from '@/screens/AddPlaceScreen';
 import PlaceDetailScreen from '@/screens/PlaceDetailScreen';
@@ -15,6 +22,8 @@ import ExportScreen from '@/screens/ExportScreen';
 const Tab = createBottomTabNavigator<MainTabParamList>();
 const HomeStack = createNativeStackNavigator<HomeStackParamList>();
 const MapStack = createNativeStackNavigator<MapStackParamList>();
+const CategoryStack = createNativeStackNavigator<CategoryStackParamList>();
+const SearchStack = createNativeStackNavigator<SearchStackParamList>();
 const SettingsStack = createNativeStackNavigator<SettingsStackParamList>();
 
 function HomeStackScreen() {
@@ -34,6 +43,24 @@ function MapStackScreen() {
       <MapStack.Screen name="AddPlace" component={AddPlaceScreen} />
       <MapStack.Screen name="PlaceDetail" component={PlaceDetailScreen} />
     </MapStack.Navigator>
+  );
+}
+
+function CategoryStackScreen() {
+  return (
+    <CategoryStack.Navigator screenOptions={{headerShown: false}}>
+      <CategoryStack.Screen name="CategoryList" component={CategoryListScreen} />
+      <CategoryStack.Screen name="PlaceDetail" component={PlaceDetailScreen} />
+    </CategoryStack.Navigator>
+  );
+}
+
+function SearchStackScreen() {
+  return (
+    <SearchStack.Navigator screenOptions={{headerShown: false}}>
+      <SearchStack.Screen name="Search" component={SearchScreen} />
+      <SearchStack.Screen name="PlaceDetail" component={PlaceDetailScreen} />
+    </SearchStack.Navigator>
   );
 }
 
@@ -71,8 +98,8 @@ export default function MainNavigator() {
       })}>
       <Tab.Screen name="HomeTab" component={HomeStackScreen} options={{title: 'Home'}} />
       <Tab.Screen name="MapTab" component={MapStackScreen} options={{title: 'Map'}} />
-      <Tab.Screen name="SearchTab" component={SearchScreen} options={{title: 'Search'}} />
-      <Tab.Screen name="CategoryTab" component={CategoryListScreen} options={{title: 'Categories'}} />
+      <Tab.Screen name="SearchTab" component={SearchStackScreen} options={{title: 'Search'}} />
+      <Tab.Screen name="CategoryTab" component={CategoryStackScreen} options={{title: 'Categories'}} />
       <Tab.Screen name="SettingsTab" component={SettingsStackScreen} options={{title: 'Settings'}} />
     </Tab.Navigator>
   );

@@ -11,7 +11,7 @@ import {
   ToastAndroid,
 } from 'react-native';
 import {Text, TextInput, Button, Chip, IconButton} from 'react-native-paper';
-import MapView, {Marker} from 'react-native-maps';
+import MapLibreGL from '@maplibre/maplibre-react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
 import {useNavigation, useRoute} from '@react-navigation/native';
@@ -22,6 +22,7 @@ import type {CategoryName, Place} from '@/types';
 import {CATEGORIES} from '@/constants/categories';
 import {getPlaceById} from '@/database/queries';
 import {usePlacesStore} from '@/store/placesStore';
+import {MAP_STYLE} from '@/constants/mapStyle';
 
 type Nav = NativeStackNavigationProp<HomeStackParamList, 'PlaceDetail'>;
 type Route = RouteProp<HomeStackParamList, 'PlaceDetail'>;
@@ -242,28 +243,35 @@ export default function PlaceDetailScreen() {
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Mini Map */}
-        <MapView
+        <MapLibreGL.MapView
           style={styles.map}
+          mapStyle={MAP_STYLE}
           scrollEnabled={false}
           zoomEnabled={false}
           rotateEnabled={false}
           pitchEnabled={false}
-          region={{
-            latitude: place.latitude,
-            longitude: place.longitude,
-            latitudeDelta: 0.005,
-            longitudeDelta: 0.005,
-          }}>
-          <Marker
-            coordinate={{
-              latitude: place.latitude,
-              longitude: place.longitude,
-            }}>
-            <View style={styles.marker}>
-              <Text style={styles.markerEmoji}>{place.emoji}</Text>
+          logoEnabled={false}
+          attributionEnabled={false}>
+          <MapLibreGL.Camera
+            centerCoordinate={[place.longitude, place.latitude]}
+            zoomLevel={15}
+          />
+          <MapLibreGL.PointAnnotation
+            id={`detail-${place.id}`}
+            coordinate={[place.longitude, place.latitude]}>
+            <View style={styles.markerContainer}>
+              <View style={styles.marker}>
+                <Text style={styles.markerEmoji}>{place.emoji}</Text>
+              </View>
+              <View style={styles.markerLabel}>
+                <Text style={styles.markerLabelText} numberOfLines={1}>
+                  {place.name}
+                </Text>
+              </View>
             </View>
-          </Marker>
-        </MapView>
+            <MapLibreGL.Callout title={place.name} />
+          </MapLibreGL.PointAnnotation>
+        </MapLibreGL.MapView>
 
         {isEditing ? (
           <View style={styles.editSection}>
@@ -506,6 +514,9 @@ const styles = StyleSheet.create({
     height: 200,
     width: '100%',
   },
+  markerContainer: {
+    alignItems: 'center',
+  },
   marker: {
     width: 40,
     height: 40,
@@ -515,9 +526,28 @@ const styles = StyleSheet.create({
     borderColor: '#16A34A',
     justifyContent: 'center',
     alignItems: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
   },
   markerEmoji: {
     fontSize: 20,
+  },
+  markerLabel: {
+    backgroundColor: '#1E2230',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginTop: 4,
+    maxWidth: 100,
+  },
+  markerLabelText: {
+    color: '#F0F2F8',
+    fontSize: 10,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   // View mode
   infoSection: {

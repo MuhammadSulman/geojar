@@ -24,6 +24,16 @@ export type MapStackParamList = {
   PlaceDetail: {placeId: string};
 };
 
+export type CategoryStackParamList = {
+  CategoryList: undefined;
+  PlaceDetail: {placeId: string};
+};
+
+export type SearchStackParamList = {
+  Search: undefined;
+  PlaceDetail: {placeId: string};
+};
+
 export type SettingsStackParamList = {
   Settings: undefined;
   Export: undefined;

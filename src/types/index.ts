@@ -11,7 +11,17 @@ export interface Place {
   updatedAt: string; // ISO string
 }
 
-export type CategoryName = 'Food' | 'Work' | 'Health' | 'Shopping' | 'Nature' | 'Other';
+export type CategoryName =
+  | 'Home'
+  | 'Family'
+  | 'Friends'
+  | 'Relative'
+  | 'Food'
+  | 'Work'
+  | 'Health'
+  | 'Shopping'
+  | 'Nature'
+  | 'Other';
 
 export interface Category {
   id: string;

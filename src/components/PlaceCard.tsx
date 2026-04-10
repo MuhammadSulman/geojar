@@ -1,6 +1,6 @@
 import React from 'react';
 import {View, Pressable, StyleSheet} from 'react-native';
-import {Text, Chip} from 'react-native-paper';
+import {Text} from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import type {Place} from '@/types';
 import {CATEGORIES} from '@/constants/categories';
@@ -22,75 +22,100 @@ export default function PlaceCard({
   const cat = CATEGORIES.find(c => c.name === place.category);
 
   return (
-    <Pressable style={styles.card} onPress={onPress}>
-      <View style={styles.row}>
-        <Text style={styles.emoji}>{place.emoji}</Text>
-        <View style={styles.info}>
+    <Pressable
+      style={({pressed}) => [styles.row, pressed && styles.rowPressed]}
+      onPress={onPress}>
+      <Text style={styles.emoji}>{place.emoji}</Text>
+      <View style={styles.info}>
+        <View style={styles.titleRow}>
           <HighlightText
             text={place.name}
             highlight={highlight}
             style={styles.name}
+            numberOfLines={1}
           />
+          {onFavoritePress && place.isFavorite && (
+            <Icon name="heart" size={14} color="#EF4444" />
+          )}
+        </View>
+        <View style={styles.meta}>
           {cat && (
-            <Chip
-              compact
-              style={[styles.chip, {backgroundColor: cat.color + '22'}]}
-              textStyle={{color: cat.color, fontSize: 11}}>
-              {cat.emoji} {cat.name}
-            </Chip>
+            <>
+              <View style={[styles.dot, {backgroundColor: cat.color}]} />
+              <Text style={[styles.catText, {color: cat.color}]}>
+                {cat.name}
+              </Text>
+            </>
           )}
           {place.note ? (
             <Text style={styles.note} numberOfLines={1}>
+              {cat ? ' · ' : ''}
               {place.note}
             </Text>
           ) : null}
         </View>
-        {onFavoritePress && (
-          <Pressable onPress={onFavoritePress} hitSlop={8}>
-            <Icon
-              name={place.isFavorite ? 'heart' : 'heart-outline'}
-              size={22}
-              color={place.isFavorite ? '#EF4444' : '#7B82A0'}
-            />
-          </Pressable>
-        )}
       </View>
+      <Icon name="chevron-right" size={20} color="#7B82A0" />
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: '#1E2230',
-    borderRadius: 12,
-    padding: 14,
-    marginHorizontal: 16,
-    marginBottom: 10,
-  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginHorizontal: 12,
+    marginBottom: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#2A2F42',
+    backgroundColor: '#1E2230',
+  },
+  rowPressed: {
+    backgroundColor: '#252A3A',
+    borderColor: '#3A4060',
   },
   emoji: {
-    fontSize: 28,
-    marginRight: 12,
+    fontSize: 22,
+    width: 32,
+    textAlign: 'center',
+    marginRight: 10,
   },
   info: {
     flex: 1,
+    marginRight: 4,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   name: {
     color: '#F0F2F8',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    marginBottom: 4,
+    flexShrink: 1,
   },
-  chip: {
-    alignSelf: 'flex-start',
-    marginBottom: 4,
-    height: 24,
+  meta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 4,
+  },
+  catText: {
+    fontSize: 12,
+    fontWeight: '500',
   },
   note: {
     color: '#7B82A0',
-    fontSize: 13,
+    fontSize: 12,
+    flexShrink: 1,
   },
 });
