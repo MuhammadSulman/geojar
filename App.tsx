@@ -13,30 +13,35 @@ import {getDatabase} from '@/database/db';
 import RootNavigator from '@/navigation/RootNavigator';
 import {ToastProvider} from '@/components/Toast';
 import ErrorBoundary from '@/components/ErrorBoundary';
-import {parseLocationUrl} from '@/utils/parseLocationUrl';
+import {resolveAndParseLocationUrl} from '@/utils/parseLocationUrl';
+import {useThemeStore} from '@/store/themeStore';
 
 const queryClient = new QueryClient();
 
 function App() {
-  const isDarkMode = useColorScheme() === 'dark';
+  const systemDark = useColorScheme() === 'dark';
+  const mode = useThemeStore(s => s.mode);
+  const hydrate = useThemeStore(s => s.hydrate);
+  const isDarkMode = mode === 'system' ? systemDark : mode === 'dark';
   const theme = isDarkMode ? DarkTheme : LightTheme;
+
   const navigationRef = useRef<NavigationContainerRef<any>>(null);
 
-  const handleDeepLink = useCallback((url: string | null) => {
+  const handleDeepLink = useCallback(async (url: string | null) => {
     if (!url) {
       return;
     }
-    const location = parseLocationUrl(url);
+    const location = await resolveAndParseLocationUrl(url);
     if (location) {
       // Small delay to ensure navigation is ready
       setTimeout(() => {
         navigationRef.current?.navigate('Main', {
-          screen: 'HomeTab',
+          screen: 'MapTab',
           params: {
-            screen: 'AddPlace',
+            screen: 'Map',
             params: {
-              latitude: location.latitude,
-              longitude: location.longitude,
+              focusLatitude: location.latitude,
+              focusLongitude: location.longitude,
             },
           },
         });
@@ -50,36 +55,36 @@ function App() {
   }, []);
 
   useEffect(() => {
+    hydrate();
     getDatabase();
 
-    // Handle app opened via deep link
     Linking.getInitialURL().then(handleDeepLink);
 
-    // Handle deep link while app is already open
     const subscription = Linking.addEventListener('url', ({url}) =>
       handleDeepLink(url),
     );
     return () => subscription.remove();
-  }, [handleDeepLink]);
+  }, [handleDeepLink, hydrate]);
 
   return (
     <GestureHandlerRootView style={{flex: 1}}>
-      <ErrorBoundary>
-        <PaperProvider theme={theme}>
+      <PaperProvider theme={theme}>
+        <ErrorBoundary>
           <QueryClientProvider client={queryClient}>
             <SafeAreaProvider>
               <ToastProvider>
                 <NavigationContainer ref={navigationRef}>
                   <StatusBar
                     barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+                    backgroundColor={theme.appColors.background}
                   />
                   <RootNavigator />
                 </NavigationContainer>
               </ToastProvider>
             </SafeAreaProvider>
           </QueryClientProvider>
-        </PaperProvider>
-      </ErrorBoundary>
+        </ErrorBoundary>
+      </PaperProvider>
     </GestureHandlerRootView>
   );
 }

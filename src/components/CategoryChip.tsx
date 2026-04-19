@@ -2,6 +2,7 @@ import React from 'react';
 import {Pressable, StyleSheet} from 'react-native';
 import {Text} from 'react-native-paper';
 import type {Category} from '@/types';
+import {useAppTheme} from '@/constants/theme';
 
 interface Props {
   category: Category;
@@ -10,19 +11,28 @@ interface Props {
 }
 
 export default function CategoryChip({category, selected, onPress}: Props) {
+  const theme = useAppTheme();
   return (
     <Pressable
       style={[
         styles.chip,
         selected
-          ? {backgroundColor: category.color + '33', borderColor: category.color}
-          : {backgroundColor: 'transparent', borderColor: '#2A2F42'},
+          ? {
+              backgroundColor: category.color + '33',
+              borderColor: category.color,
+            }
+          : {
+              backgroundColor: 'transparent',
+              borderColor: theme.appColors.outline,
+            },
       ]}
       onPress={onPress}>
       <Text
         style={[
           styles.label,
-          {color: selected ? category.color : '#7B82A0'},
+          {
+            color: selected ? category.color : theme.appColors.onSurfaceMuted,
+          },
         ]}>
         {category.emoji} {category.name}
       </Text>

@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useMemo, useState} from 'react';
 import {View, Alert, StyleSheet} from 'react-native';
 import {Text, Button, IconButton} from 'react-native-paper';
 import RNFS from 'react-native-fs';
@@ -6,9 +6,12 @@ import Share from 'react-native-share';
 import {useNavigation} from '@react-navigation/native';
 import type {Place} from '@/types';
 import {getAllPlacesForExport} from '@/database/queries';
+import {useAppTheme, type AppTheme} from '@/constants/theme';
 
 export default function ExportScreen() {
   const navigation = useNavigation();
+  const theme = useAppTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const [places, setPlaces] = useState<Place[]>([]);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -57,9 +60,7 @@ export default function ExportScreen() {
       const filename = `geojar_export.${format}`;
       const path = `${RNFS.DocumentDirectoryPath}/${filename}`;
       const content =
-        format === 'csv'
-          ? buildCsv(places)
-          : JSON.stringify(places, null, 2);
+        format === 'csv' ? buildCsv(places) : JSON.stringify(places, null, 2);
 
       await RNFS.writeFile(path, content, 'utf8');
 
@@ -70,10 +71,7 @@ export default function ExportScreen() {
       });
     } catch (err: unknown) {
       const error = err as {message?: string};
-      if (
-        error.message &&
-        !error.message.includes('User did not share')
-      ) {
+      if (error.message && !error.message.includes('User did not share')) {
         Alert.alert('Error', 'Failed to export data.');
       }
     } finally {
@@ -86,7 +84,7 @@ export default function ExportScreen() {
       <View style={styles.header}>
         <IconButton
           icon="arrow-left"
-          iconColor="#F0F2F8"
+          iconColor={theme.appColors.onSurface}
           onPress={() => navigation.goBack()}
         />
         <Text variant="titleLarge" style={styles.headerTitle}>
@@ -109,7 +107,7 @@ export default function ExportScreen() {
           loading={isExporting}
           disabled={isExporting}
           style={styles.exportBtn}
-          buttonColor="#16A34A">
+          buttonColor={theme.appColors.primary}>
           Export as CSV
         </Button>
 
@@ -120,7 +118,7 @@ export default function ExportScreen() {
           loading={isExporting}
           disabled={isExporting}
           style={styles.exportBtn}
-          textColor="#16A34A">
+          textColor={theme.appColors.primary}>
           Export as JSON
         </Button>
       </View>
@@ -128,41 +126,42 @@ export default function ExportScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0D0F14',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingTop: 44,
-    paddingHorizontal: 4,
-  },
-  headerTitle: {
-    color: '#F0F2F8',
-    flex: 1,
-  },
-  headerSpacer: {
-    width: 48,
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  countEmoji: {
-    fontSize: 56,
-    marginBottom: 16,
-  },
-  count: {
-    color: '#F0F2F8',
-    textAlign: 'center',
-    marginBottom: 40,
-  },
-  exportBtn: {
-    width: '100%',
-    marginBottom: 16,
-  },
-});
+const makeStyles = (t: AppTheme) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: t.appColors.background,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingTop: 44,
+      paddingHorizontal: 4,
+    },
+    headerTitle: {
+      color: t.appColors.onSurface,
+      flex: 1,
+    },
+    headerSpacer: {
+      width: 48,
+    },
+    content: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 24,
+    },
+    countEmoji: {
+      fontSize: 56,
+      marginBottom: 16,
+    },
+    count: {
+      color: t.appColors.onSurface,
+      textAlign: 'center',
+      marginBottom: 40,
+    },
+    exportBtn: {
+      width: '100%',
+      marginBottom: 16,
+    },
+  });

@@ -1,4 +1,4 @@
-import React, {useCallback, useState} from 'react';
+import React, {useCallback, useMemo, useState} from 'react';
 import {
   View,
   FlatList,
@@ -21,6 +21,7 @@ import type {SearchStackParamList} from '@/navigation/types';
 import {CATEGORIES} from '@/constants/categories';
 import PlaceCard from '@/components/PlaceCard';
 import {usePlacesStore} from '@/store/placesStore';
+import {useAppTheme, type AppTheme} from '@/constants/theme';
 
 type Nav = NativeStackNavigationProp<SearchStackParamList, 'Search'>;
 
@@ -47,31 +48,59 @@ export default function SearchScreen() {
   const places = usePlacesStore(s => s.places);
   const loadPlaces = usePlacesStore(s => s.loadPlaces);
   const toggleFavorite = usePlacesStore(s => s.toggleFavorite);
+  const theme = useAppTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   const [query, setQuery] = useState('');
   const [activeCat, setActiveCat] = useState<CategoryName | null>(null);
   const [sort, setSort] = useState<SortOrder>('newest');
-  const [userLoc, setUserLoc] = useState<{lat: number; lng: number} | null>(null);
+  const [userLoc, setUserLoc] = useState<{lat: number; lng: number} | null>(
+    null,
+  );
 
-  useFocusEffect(useCallback(() => { loadPlaces(); }, [loadPlaces]));
+  useFocusEffect(
+    useCallback(() => {
+      loadPlaces();
+    }, [loadPlaces]),
+  );
 
   const filtered = React.useMemo(() => {
     let data = places;
-    if (activeCat) { data = data.filter(p => p.category === activeCat); }
+    if (activeCat) {
+      data = data.filter(p => p.category === activeCat);
+    }
     if (query.trim()) {
       const q = query.toLowerCase();
       data = data.filter(
-        p => p.name.toLowerCase().includes(q) || (p.note && p.note.toLowerCase().includes(q)),
+        p =>
+          p.name.toLowerCase().includes(q) ||
+          (p.note && p.note.toLowerCase().includes(q)),
       );
     }
     const sorted = [...data];
     switch (sort) {
-      case 'newest': sorted.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()); break;
-      case 'oldest': sorted.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()); break;
-      case 'az': sorted.sort((a, b) => a.name.localeCompare(b.name)); break;
+      case 'newest':
+        sorted.sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        );
+        break;
+      case 'oldest':
+        sorted.sort(
+          (a, b) =>
+            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+        );
+        break;
+      case 'az':
+        sorted.sort((a, b) => a.name.localeCompare(b.name));
+        break;
       case 'nearest':
         if (userLoc) {
-          sorted.sort((a, b) => haversine(userLoc.lat, userLoc.lng, a.latitude, a.longitude) - haversine(userLoc.lat, userLoc.lng, b.latitude, b.longitude));
+          sorted.sort(
+            (a, b) =>
+              haversine(userLoc.lat, userLoc.lng, a.latitude, a.longitude) -
+              haversine(userLoc.lat, userLoc.lng, b.latitude, b.longitude),
+          );
         }
         break;
     }
@@ -84,18 +113,29 @@ export default function SearchScreen() {
         ios: PERMISSIONS.IOS.LOCATION_WHEN_IN_USE,
         android: PERMISSIONS.ANDROID.ACCESS_FINE_LOCATION,
       });
-      if (!perm) { return; }
+      if (!perm) {
+        return;
+      }
       check(perm).then(async status => {
-        if (status === RESULTS.DENIED) { status = await request(perm); }
+        if (status === RESULTS.DENIED) {
+          status = await request(perm);
+        }
         if (status !== RESULTS.GRANTED && status !== RESULTS.LIMITED) {
-          Alert.alert('Location Required', 'Enable location to sort by distance.', [
-            {text: 'Cancel', style: 'cancel'},
-            {text: 'Settings', onPress: () => Linking.openSettings()},
-          ]);
+          Alert.alert(
+            'Location Required',
+            'Enable location to sort by distance.',
+            [
+              {text: 'Cancel', style: 'cancel'},
+              {text: 'Settings', onPress: () => Linking.openSettings()},
+            ],
+          );
           return;
         }
         Geolocation.getCurrentPosition(
-          pos => { setUserLoc({lat: pos.coords.latitude, lng: pos.coords.longitude}); setSort('nearest'); },
+          pos => {
+            setUserLoc({lat: pos.coords.latitude, lng: pos.coords.longitude});
+            setSort('nearest');
+          },
           err => Alert.alert('Error', err.message),
           {enableHighAccuracy: true, timeout: 15000, maximumAge: 10000},
         );
@@ -107,25 +147,27 @@ export default function SearchScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Search bar */}
       <View style={styles.searchBox}>
-        <Icon name="magnify" size={18} color="#7B82A0" />
+        <Icon name="magnify" size={18} color={theme.appColors.onSurfaceMuted} />
         <TextInput
           style={styles.input}
           placeholder="Search places..."
-          placeholderTextColor="#555"
+          placeholderTextColor={theme.appColors.placeholder}
           value={query}
           onChangeText={setQuery}
           returnKeyType="search"
         />
         {query.length > 0 && (
           <Pressable onPress={() => setQuery('')} hitSlop={8}>
-            <Icon name="close-circle" size={16} color="#555" />
+            <Icon
+              name="close-circle"
+              size={16}
+              color={theme.appColors.placeholder}
+            />
           </Pressable>
         )}
       </View>
 
-      {/* Filters: categories + sort */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -134,16 +176,28 @@ export default function SearchScreen() {
         <Pressable
           style={[styles.pill, !activeCat && styles.pillActive]}
           onPress={() => setActiveCat(null)}>
-          <Text style={[styles.pillText, !activeCat && styles.pillTextActive]}>All</Text>
+          <Text style={[styles.pillText, !activeCat && styles.pillTextActive]}>
+            All
+          </Text>
         </Pressable>
         {CATEGORIES.map(c => {
           const on = activeCat === c.name;
           return (
             <Pressable
               key={c.id}
-              style={[styles.pill, on && {backgroundColor: c.color + '22', borderColor: c.color + '44'}]}
-              onPress={() => setActiveCat(prev => (prev === c.name ? null : c.name))}>
-              <Text style={[styles.pillText, on && {color: c.color}]}>{c.emoji} {c.name}</Text>
+              style={[
+                styles.pill,
+                on && {
+                  backgroundColor: c.color + '22',
+                  borderColor: c.color + '44',
+                },
+              ]}
+              onPress={() =>
+                setActiveCat(prev => (prev === c.name ? null : c.name))
+              }>
+              <Text style={[styles.pillText, on && {color: c.color}]}>
+                {c.emoji} {c.name}
+              </Text>
             </Pressable>
           );
         })}
@@ -155,19 +209,22 @@ export default function SearchScreen() {
               key={o.value}
               style={[styles.pill, on && styles.pillActive]}
               onPress={() => handleSort(o.value)}>
-              <Text style={[styles.pillText, on && styles.pillTextActive]}>{o.label}</Text>
+              <Text style={[styles.pillText, on && styles.pillTextActive]}>
+                {o.label}
+              </Text>
             </Pressable>
           );
         })}
       </ScrollView>
 
-      {/* Results */}
       {filtered.length === 0 ? (
         <View style={styles.empty}>
           <Icon
-            name={places.length === 0 ? 'map-marker-plus-outline' : 'magnify-close'}
+            name={
+              places.length === 0 ? 'map-marker-plus-outline' : 'magnify-close'
+            }
             size={40}
-            color="#2A2F42"
+            color={theme.appColors.outline}
           />
           <Text style={styles.emptyText}>
             {places.length === 0 ? 'No places saved yet' : 'No results'}
@@ -191,74 +248,75 @@ export default function SearchScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0D0F14',
-    paddingTop: 48,
-  },
-  searchBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1E2230',
-    borderRadius: 8,
-    marginHorizontal: 12,
-    paddingHorizontal: 8,
-    height: 36,
-    gap: 6,
-    marginBottom: 4,
-  },
-  input: {
-    flex: 1,
-    color: '#F0F2F8',
-    fontSize: 13,
-    paddingVertical: 0,
-  },
-  filterScroll: {
-    flexGrow: 0,
-    marginTop: 4,
-    marginBottom: 8,
-  },
-  filterRow: {
-    paddingHorizontal: 12,
-    gap: 4,
-    alignItems: 'center',
-  },
-  pill: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 14,
-    backgroundColor: '#1E2230',
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  pillActive: {
-    backgroundColor: '#16A34A1A',
-    borderColor: '#16A34A44',
-  },
-  pillText: {
-    color: '#7B82A0',
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  pillTextActive: {
-    color: '#16A34A',
-  },
-  divider: {
-    width: 1,
-    height: 12,
-    backgroundColor: '#2A2F42',
-    marginHorizontal: 1,
-  },
-  empty: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-    paddingBottom: 60,
-  },
-  emptyText: {
-    color: '#7B82A0',
-    fontSize: 14,
-  },
-});
+const makeStyles = (t: AppTheme) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: t.appColors.background,
+      paddingTop: 48,
+    },
+    searchBox: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: t.appColors.surface,
+      borderRadius: 8,
+      marginHorizontal: 12,
+      paddingHorizontal: 8,
+      height: 36,
+      gap: 6,
+      marginBottom: 4,
+    },
+    input: {
+      flex: 1,
+      color: t.appColors.onSurface,
+      fontSize: 13,
+      paddingVertical: 0,
+    },
+    filterScroll: {
+      flexGrow: 0,
+      marginTop: 4,
+      marginBottom: 8,
+    },
+    filterRow: {
+      paddingHorizontal: 12,
+      gap: 4,
+      alignItems: 'center',
+    },
+    pill: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 14,
+      backgroundColor: t.appColors.surface,
+      borderWidth: 1,
+      borderColor: 'transparent',
+    },
+    pillActive: {
+      backgroundColor: t.appColors.primarySoft,
+      borderColor: t.appColors.primary + '44',
+    },
+    pillText: {
+      color: t.appColors.onSurfaceMuted,
+      fontSize: 11,
+      fontWeight: '500',
+    },
+    pillTextActive: {
+      color: t.appColors.primary,
+    },
+    divider: {
+      width: 1,
+      height: 12,
+      backgroundColor: t.appColors.outline,
+      marginHorizontal: 1,
+    },
+    empty: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: 8,
+      paddingBottom: 60,
+    },
+    emptyText: {
+      color: t.appColors.onSurfaceMuted,
+      fontSize: 14,
+    },
+  });

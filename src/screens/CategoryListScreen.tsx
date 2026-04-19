@@ -7,6 +7,7 @@ import type {Place} from '@/types';
 import type {CategoryStackParamList} from '@/navigation/types';
 import {CATEGORIES} from '@/constants/categories';
 import {usePlacesStore} from '@/store/placesStore';
+import {useAppTheme, type AppTheme} from '@/constants/theme';
 import PlaceCard from '@/components/PlaceCard';
 
 type Nav = NativeStackNavigationProp<CategoryStackParamList, 'CategoryList'>;
@@ -24,8 +25,9 @@ export default function CategoryListScreen() {
   const places = usePlacesStore(s => s.places);
   const loadPlaces = usePlacesStore(s => s.loadPlaces);
   const toggleFavorite = usePlacesStore(s => s.toggleFavorite);
+  const theme = useAppTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
-  // Reload places every time this tab gains focus
   useFocusEffect(
     useCallback(() => {
       loadPlaces();
@@ -90,56 +92,57 @@ export default function CategoryListScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0D0F14',
-  },
-  title: {
-    color: '#F0F2F8',
-    paddingTop: 48,
-    paddingHorizontal: 16,
-    paddingBottom: 6,
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  listContent: {
-    paddingBottom: 24,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 4,
-    gap: 6,
-  },
-  sectionEmoji: {
-    fontSize: 14,
-  },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  badge: {
-    borderRadius: 8,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-  },
-  badgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  empty: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingTop: 80,
-  },
-  emptyText: {
-    color: '#7B82A0',
-    fontSize: 14,
-  },
-});
+const makeStyles = (t: AppTheme) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: t.appColors.background,
+    },
+    title: {
+      color: t.appColors.onSurface,
+      paddingTop: 48,
+      paddingHorizontal: 16,
+      paddingBottom: 6,
+      fontSize: 20,
+      fontWeight: '700',
+    },
+    listContent: {
+      paddingBottom: 24,
+    },
+    sectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      paddingBottom: 4,
+      gap: 6,
+    },
+    sectionEmoji: {
+      fontSize: 14,
+    },
+    sectionTitle: {
+      fontSize: 13,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    badge: {
+      borderRadius: 8,
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+    },
+    badgeText: {
+      fontSize: 11,
+      fontWeight: '600',
+    },
+    empty: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingTop: 80,
+    },
+    emptyText: {
+      color: t.appColors.onSurfaceMuted,
+      fontSize: 14,
+    },
+  });

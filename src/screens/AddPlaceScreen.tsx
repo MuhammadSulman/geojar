@@ -1,4 +1,4 @@
-import React, {useCallback, useState} from 'react';
+import React, {useCallback, useMemo, useState} from 'react';
 import {
   View,
   ScrollView,
@@ -22,6 +22,7 @@ import type {HomeStackParamList} from '@/navigation/types';
 import type {CategoryName} from '@/types';
 import {CATEGORIES} from '@/constants/categories';
 import {usePlacesStore} from '@/store/placesStore';
+import {useAppTheme, type AppTheme} from '@/constants/theme';
 
 type Nav = NativeStackNavigationProp<HomeStackParamList, 'AddPlace'>;
 type Route = RouteProp<HomeStackParamList, 'AddPlace'>;
@@ -44,6 +45,8 @@ export default function AddPlaceScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const addPlace = usePlacesStore(s => s.addPlace);
+  const theme = useAppTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
 
   const [name, setName] = useState('');
   const [category, setCategory] = useState<CategoryName | null>(null);
@@ -130,7 +133,11 @@ export default function AddPlaceScreen() {
       position => {
         setLatitude(position.coords.latitude.toFixed(6));
         setLongitude(position.coords.longitude.toFixed(6));
-        setErrors(prev => ({...prev, latitude: undefined, longitude: undefined}));
+        setErrors(prev => ({
+          ...prev,
+          latitude: undefined,
+          longitude: undefined,
+        }));
         setIsLocating(false);
       },
       error => {
@@ -190,7 +197,6 @@ export default function AddPlaceScreen() {
         Add Place
       </Text>
 
-      {/* Name */}
       <TextInput
         label="Place Name"
         value={name}
@@ -208,7 +214,6 @@ export default function AddPlaceScreen() {
       />
       {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
 
-      {/* Category */}
       <Text variant="labelLarge" style={styles.sectionLabel}>
         Category
       </Text>
@@ -231,7 +236,9 @@ export default function AddPlaceScreen() {
               category === cat.name && {backgroundColor: cat.color + '33'},
             ]}
             textStyle={
-              category === cat.name ? {color: cat.color} : {color: '#F0F2F8'}
+              category === cat.name
+                ? {color: cat.color}
+                : {color: theme.appColors.onSurface}
             }
             showSelectedOverlay>
             {cat.emoji} {cat.name}
@@ -242,7 +249,6 @@ export default function AddPlaceScreen() {
         <Text style={styles.errorText}>{errors.category}</Text>
       )}
 
-      {/* Emoji */}
       <Text variant="labelLarge" style={styles.sectionLabel}>
         Emoji
       </Text>
@@ -256,19 +262,18 @@ export default function AddPlaceScreen() {
       />
       {errors.emoji && <Text style={styles.errorText}>{errors.emoji}</Text>}
 
-      {/* Location */}
       <Button
         mode="outlined"
         onPress={handleUseMyLocation}
         disabled={isLocating}
         style={styles.locationBtn}
-        textColor="#16A34A"
+        textColor={theme.appColors.primary}
         icon={isLocating ? undefined : 'crosshairs-gps'}>
         {isLocating ? '' : '📡 Use My Location'}
       </Button>
       {isLocating && (
         <View style={styles.locatingRow}>
-          <ActivityIndicator size="small" color="#16A34A" />
+          <ActivityIndicator size="small" color={theme.appColors.primary} />
           <Text style={styles.locatingText}>Getting location...</Text>
         </View>
       )}
@@ -315,7 +320,6 @@ export default function AddPlaceScreen() {
         </View>
       </View>
 
-      {/* Note */}
       <TextInput
         label="Note (optional)"
         value={note}
@@ -328,109 +332,109 @@ export default function AddPlaceScreen() {
         right={<TextInput.Affix text={`${note.length}/500`} />}
       />
 
-      {/* Save */}
       <Button
         mode="contained"
         onPress={handleSave}
         loading={isSaving}
         disabled={isSaving}
         style={styles.saveBtn}
-        buttonColor="#16A34A">
+        buttonColor={theme.appColors.primary}>
         Save Place
       </Button>
     </KeyboardAwareScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0D0F14',
-  },
-  content: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  title: {
-    color: '#F0F2F8',
-    marginBottom: 20,
-  },
-  input: {
-    backgroundColor: '#1E2230',
-    marginBottom: 4,
-  },
-  sectionLabel: {
-    color: '#F0F2F8',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    marginBottom: 4,
-  },
-  chip: {
-    marginRight: 8,
-    backgroundColor: '#1E2230',
-  },
-  emojiRow: {
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  emojiCell: {
-    flex: 1,
-    aspectRatio: 1,
-    maxWidth: '23%',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#1E2230',
-    borderRadius: 12,
-    marginHorizontal: 4,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  emojiCellSelected: {
-    borderColor: '#16A34A',
-    backgroundColor: '#16A34A22',
-  },
-  emojiText: {
-    fontSize: 24,
-  },
-  locationBtn: {
-    marginTop: 16,
-    marginBottom: 8,
-    borderColor: '#16A34A',
-  },
-  locatingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  locatingText: {
-    color: '#7B82A0',
-    marginLeft: 8,
-  },
-  coordRow: {
-    flexDirection: 'row',
-    marginBottom: 4,
-  },
-  coordField: {
-    flex: 1,
-  },
-  coordSpacer: {
-    width: 12,
-  },
-  noteInput: {
-    marginTop: 12,
-    minHeight: 100,
-  },
-  saveBtn: {
-    marginTop: 24,
-    paddingVertical: 4,
-  },
-  errorText: {
-    color: '#EF4444',
-    fontSize: 12,
-    marginBottom: 8,
-    marginLeft: 4,
-  },
-});
+const makeStyles = (t: AppTheme) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: t.appColors.background,
+    },
+    content: {
+      padding: 16,
+      paddingBottom: 40,
+    },
+    title: {
+      color: t.appColors.onSurface,
+      marginBottom: 20,
+    },
+    input: {
+      backgroundColor: t.appColors.surface,
+      marginBottom: 4,
+    },
+    sectionLabel: {
+      color: t.appColors.onSurface,
+      marginTop: 16,
+      marginBottom: 8,
+    },
+    chipRow: {
+      flexDirection: 'row',
+      marginBottom: 4,
+    },
+    chip: {
+      marginRight: 8,
+      backgroundColor: t.appColors.surface,
+    },
+    emojiRow: {
+      justifyContent: 'space-between',
+      marginBottom: 8,
+    },
+    emojiCell: {
+      flex: 1,
+      aspectRatio: 1,
+      maxWidth: '23%',
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: t.appColors.surface,
+      borderRadius: 12,
+      marginHorizontal: 4,
+      borderWidth: 2,
+      borderColor: 'transparent',
+    },
+    emojiCellSelected: {
+      borderColor: t.appColors.primary,
+      backgroundColor: t.appColors.primary + '22',
+    },
+    emojiText: {
+      fontSize: 24,
+    },
+    locationBtn: {
+      marginTop: 16,
+      marginBottom: 8,
+      borderColor: t.appColors.primary,
+    },
+    locatingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 8,
+    },
+    locatingText: {
+      color: t.appColors.onSurfaceMuted,
+      marginLeft: 8,
+    },
+    coordRow: {
+      flexDirection: 'row',
+      marginBottom: 4,
+    },
+    coordField: {
+      flex: 1,
+    },
+    coordSpacer: {
+      width: 12,
+    },
+    noteInput: {
+      marginTop: 12,
+      minHeight: 100,
+    },
+    saveBtn: {
+      marginTop: 24,
+      paddingVertical: 4,
+    },
+    errorText: {
+      color: t.appColors.error,
+      fontSize: 12,
+      marginBottom: 8,
+      marginLeft: 4,
+    },
+  });

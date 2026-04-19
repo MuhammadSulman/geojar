@@ -1,6 +1,7 @@
-import React from 'react';
+import React, {useMemo} from 'react';
 import {View, StyleSheet} from 'react-native';
 import {Button, Text} from 'react-native-paper';
+import {useAppTheme, type AppTheme} from '@/constants/theme';
 
 interface Props {
   emoji: string;
@@ -17,6 +18,8 @@ export default function EmptyState({
   onCTA,
   ctaLabel,
 }: Props) {
+  const theme = useAppTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   return (
     <View style={styles.container}>
       <Text style={styles.emoji}>{emoji}</Text>
@@ -29,7 +32,7 @@ export default function EmptyState({
           mode="contained"
           onPress={onCTA}
           style={styles.cta}
-          buttonColor="#16A34A">
+          buttonColor={theme.appColors.primary}>
           {ctaLabel}
         </Button>
       )}
@@ -37,30 +40,31 @@ export default function EmptyState({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 32,
-    paddingTop: 80,
-  },
-  emoji: {
-    fontSize: 64,
-    marginBottom: 16,
-  },
-  title: {
-    color: '#F0F2F8',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  subtitle: {
-    color: '#7B82A0',
-    fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  cta: {
-    marginTop: 24,
-  },
-});
+const makeStyles = (t: AppTheme) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 32,
+      paddingTop: 80,
+    },
+    emoji: {
+      fontSize: 64,
+      marginBottom: 16,
+    },
+    title: {
+      color: t.appColors.onSurface,
+      marginBottom: 8,
+      textAlign: 'center',
+    },
+    subtitle: {
+      color: t.appColors.onSurfaceMuted,
+      fontSize: 14,
+      textAlign: 'center',
+      lineHeight: 20,
+    },
+    cta: {
+      marginTop: 24,
+    },
+  });

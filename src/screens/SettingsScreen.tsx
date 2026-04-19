@@ -1,7 +1,6 @@
-import React, {useCallback, useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {View, ScrollView, Alert, Linking, StyleSheet} from 'react-native';
-import {List, Switch, Text, Divider} from 'react-native-paper';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import {List, Text, Divider, SegmentedButtons} from 'react-native-paper';
 import {pick} from 'react-native-document-picker';
 import RNFS from 'react-native-fs';
 import DeviceInfo from 'react-native-device-info';
@@ -11,31 +10,31 @@ import type {SettingsStackParamList} from '@/navigation/types';
 import type {Place} from '@/types';
 import {importPlaces, deleteAllPlaces} from '@/database/queries';
 import {usePlacesStore} from '@/store/placesStore';
+import {useThemeStore, type ThemeMode} from '@/store/themeStore';
+import {useAppTheme, type AppTheme} from '@/constants/theme';
 
 type Nav = NativeStackNavigationProp<SettingsStackParamList, 'Settings'>;
 
-const DARK_MODE_KEY = 'dark_mode';
 const PLAY_STORE_URL =
   'https://play.google.com/store/apps/details?id=com.geojar';
 
+const THEME_OPTIONS: {value: ThemeMode; label: string; icon: string}[] = [
+  {value: 'light', label: 'Light', icon: 'white-balance-sunny'},
+  {value: 'dark', label: 'Dark', icon: 'weather-night'},
+  {value: 'system', label: 'System', icon: 'cellphone'},
+];
+
 export default function SettingsScreen() {
   const navigation = useNavigation<Nav>();
+  const theme = useAppTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const loadPlaces = usePlacesStore(s => s.loadPlaces);
-  const [isDarkMode, setIsDarkMode] = useState(true);
+  const themeMode = useThemeStore(s => s.mode);
+  const setThemeMode = useThemeStore(s => s.setMode);
   const [appVersion, setAppVersion] = useState('');
 
   useEffect(() => {
-    AsyncStorage.getItem(DARK_MODE_KEY).then(val => {
-      if (val !== null) {
-        setIsDarkMode(val === 'true');
-      }
-    });
     setAppVersion(DeviceInfo.getVersion());
-  }, []);
-
-  const handleToggleDarkMode = useCallback(async (value: boolean) => {
-    setIsDarkMode(value);
-    await AsyncStorage.setItem(DARK_MODE_KEY, value.toString());
   }, []);
 
   const handleExport = () => {
@@ -102,6 +101,8 @@ export default function SettingsScreen() {
     Linking.openURL(PLAY_STORE_URL);
   };
 
+  const muted = theme.appColors.onSurfaceMuted;
+
   return (
     <ScrollView style={styles.container}>
       <Text variant="headlineMedium" style={styles.title}>
@@ -110,18 +111,17 @@ export default function SettingsScreen() {
 
       <List.Section>
         <List.Subheader style={styles.subheader}>Appearance</List.Subheader>
-        <List.Item
-          title="Dark Mode"
-          titleStyle={styles.itemTitle}
-          left={props => <List.Icon {...props} icon="weather-night" color="#7B82A0" />}
-          right={() => (
-            <Switch
-              value={isDarkMode}
-              onValueChange={handleToggleDarkMode}
-              color="#16A34A"
-            />
-          )}
-        />
+        <View style={styles.segmentWrap}>
+          <SegmentedButtons
+            value={themeMode}
+            onValueChange={v => setThemeMode(v as ThemeMode)}
+            buttons={THEME_OPTIONS.map(o => ({
+              value: o.value,
+              label: o.label,
+              icon: o.icon,
+            }))}
+          />
+        </View>
       </List.Section>
 
       <Divider style={styles.divider} />
@@ -131,20 +131,28 @@ export default function SettingsScreen() {
         <List.Item
           title="Export Data"
           titleStyle={styles.itemTitle}
-          left={props => <List.Icon {...props} icon="export" color="#7B82A0" />}
-          right={props => <List.Icon {...props} icon="chevron-right" color="#7B82A0" />}
+          left={props => <List.Icon {...props} icon="export" color={muted} />}
+          right={props => (
+            <List.Icon {...props} icon="chevron-right" color={muted} />
+          )}
           onPress={handleExport}
         />
         <List.Item
           title="Import Backup"
           titleStyle={styles.itemTitle}
-          left={props => <List.Icon {...props} icon="import" color="#7B82A0" />}
+          left={props => <List.Icon {...props} icon="import" color={muted} />}
           onPress={handleImport}
         />
         <List.Item
           title="Delete All Places"
           titleStyle={styles.deleteTitle}
-          left={props => <List.Icon {...props} icon="delete-outline" color="#EF4444" />}
+          left={props => (
+            <List.Icon
+              {...props}
+              icon="delete-outline"
+              color={theme.appColors.favorite}
+            />
+          )}
           onPress={handleDeleteAll}
         />
       </List.Section>
@@ -158,12 +166,16 @@ export default function SettingsScreen() {
           description={appVersion}
           titleStyle={styles.itemTitle}
           descriptionStyle={styles.descText}
-          left={props => <List.Icon {...props} icon="information-outline" color="#7B82A0" />}
+          left={props => (
+            <List.Icon {...props} icon="information-outline" color={muted} />
+          )}
         />
         <List.Item
           title="Rate on Play Store"
           titleStyle={styles.itemTitle}
-          left={props => <List.Icon {...props} icon="star-outline" color="#7B82A0" />}
+          left={props => (
+            <List.Icon {...props} icon="star-outline" color={muted} />
+          )}
           onPress={handleRateApp}
         />
       </List.Section>
@@ -175,40 +187,45 @@ export default function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0D0F14',
-  },
-  title: {
-    color: '#F0F2F8',
-    paddingTop: 56,
-    paddingHorizontal: 16,
-    paddingBottom: 8,
-  },
-  subheader: {
-    color: '#16A34A',
-    fontWeight: '600',
-  },
-  itemTitle: {
-    color: '#F0F2F8',
-  },
-  deleteTitle: {
-    color: '#EF4444',
-  },
-  descText: {
-    color: '#7B82A0',
-  },
-  divider: {
-    backgroundColor: '#2A2F42',
-    marginHorizontal: 16,
-  },
-  footer: {
-    alignItems: 'center',
-    paddingVertical: 32,
-  },
-  footerText: {
-    color: '#7B82A0',
-    fontSize: 13,
-  },
-});
+const makeStyles = (t: AppTheme) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: t.appColors.background,
+    },
+    title: {
+      color: t.appColors.onSurface,
+      paddingTop: 56,
+      paddingHorizontal: 16,
+      paddingBottom: 8,
+    },
+    subheader: {
+      color: t.appColors.primary,
+      fontWeight: '600',
+    },
+    segmentWrap: {
+      paddingHorizontal: 16,
+      paddingBottom: 8,
+    },
+    itemTitle: {
+      color: t.appColors.onSurface,
+    },
+    deleteTitle: {
+      color: t.appColors.favorite,
+    },
+    descText: {
+      color: t.appColors.onSurfaceMuted,
+    },
+    divider: {
+      backgroundColor: t.appColors.outline,
+      marginHorizontal: 16,
+    },
+    footer: {
+      alignItems: 'center',
+      paddingVertical: 32,
+    },
+    footerText: {
+      color: t.appColors.onSurfaceMuted,
+      fontSize: 13,
+    },
+  });

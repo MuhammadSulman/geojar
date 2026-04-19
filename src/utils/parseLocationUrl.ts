@@ -117,3 +117,34 @@ function isValidCoord(lat: number, lng: number): boolean {
     (lat !== 0 || lng !== 0) // ignore 0,0 placeholder
   );
 }
+
+// Short links (maps.app.goo.gl, goo.gl/maps) carry no coords until resolved.
+// Follow the redirect, then re-parse the final URL and (as a last resort) the
+// response body — Google sometimes embeds the coordinates as `@LAT,LNG` deep
+// in the HTML rather than the URL.
+const SHORT_URL_RE = /maps\.app\.goo\.gl|goo\.gl\/maps/i;
+
+export async function resolveAndParseLocationUrl(
+  url: string,
+): Promise<ParsedLocation | null> {
+  const direct = parseLocationUrl(url);
+  if (direct) {
+    return direct;
+  }
+
+  if (!SHORT_URL_RE.test(url)) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(url);
+    const fromFinalUrl = parseLocationUrl(response.url);
+    if (fromFinalUrl) {
+      return fromFinalUrl;
+    }
+    const body = await response.text();
+    return parseLocationUrl(body);
+  } catch {
+    return null;
+  }
+}

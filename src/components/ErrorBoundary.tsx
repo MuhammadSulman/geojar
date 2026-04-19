@@ -1,7 +1,7 @@
 import React, {Component, ErrorInfo, ReactNode} from 'react';
 import {View, StyleSheet} from 'react-native';
 import {Button, Text} from 'react-native-paper';
-import RNRestart from 'react-native';
+import {useAppTheme, type AppTheme} from '@/constants/theme';
 
 interface Props {
   children: ReactNode;
@@ -25,13 +25,10 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   handleRestart = () => {
     this.setState({hasError: false, error: null});
-    // DevSettings.reload() is available in dev, production apps
-    // would use a library like react-native-restart
     try {
       const DevSettings = require('react-native').DevSettings;
       DevSettings?.reload?.();
     } catch {
-      // Fallback: reset error state to re-render children
       this.setState({hasError: false, error: null});
     }
   };
@@ -39,66 +36,80 @@ export default class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <View style={styles.container}>
-          <Text style={styles.emoji}>😵</Text>
-          <Text variant="headlineSmall" style={styles.title}>
-            Something went wrong
-          </Text>
-          <Text style={styles.message}>
-            The app encountered an unexpected error. Please try restarting.
-          </Text>
-          {__DEV__ && this.state.error && (
-            <Text style={styles.errorDetail}>
-              {this.state.error.message}
-            </Text>
-          )}
-          <Button
-            mode="contained"
-            onPress={this.handleRestart}
-            style={styles.button}
-            buttonColor="#16A34A">
-            Restart
-          </Button>
-        </View>
+        <ErrorFallback
+          error={this.state.error}
+          onRestart={this.handleRestart}
+        />
       );
     }
-
     return this.props.children;
   }
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#0D0F14',
-    padding: 24,
-  },
-  emoji: {
-    fontSize: 64,
-    marginBottom: 16,
-  },
-  title: {
-    color: '#F0F2F8',
-    marginBottom: 12,
-  },
-  message: {
-    color: '#7B82A0',
-    fontSize: 15,
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 16,
-  },
-  errorDetail: {
-    color: '#EF4444',
-    fontSize: 12,
-    textAlign: 'center',
-    fontFamily: 'monospace',
-    marginBottom: 24,
-    paddingHorizontal: 16,
-  },
-  button: {
-    marginTop: 8,
-  },
-});
+interface FallbackProps {
+  error: Error | null;
+  onRestart: () => void;
+}
+
+function ErrorFallback({error, onRestart}: FallbackProps) {
+  const theme = useAppTheme();
+  const styles = makeStyles(theme);
+  return (
+    <View style={styles.container}>
+      <Text style={styles.emoji}>😵</Text>
+      <Text variant="headlineSmall" style={styles.title}>
+        Something went wrong
+      </Text>
+      <Text style={styles.message}>
+        The app encountered an unexpected error. Please try restarting.
+      </Text>
+      {__DEV__ && error && (
+        <Text style={styles.errorDetail}>{error.message}</Text>
+      )}
+      <Button
+        mode="contained"
+        onPress={onRestart}
+        style={styles.button}
+        buttonColor={theme.appColors.primary}>
+        Restart
+      </Button>
+    </View>
+  );
+}
+
+const makeStyles = (t: AppTheme) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: t.appColors.background,
+      padding: 24,
+    },
+    emoji: {
+      fontSize: 64,
+      marginBottom: 16,
+    },
+    title: {
+      color: t.appColors.onSurface,
+      marginBottom: 12,
+    },
+    message: {
+      color: t.appColors.onSurfaceMuted,
+      fontSize: 15,
+      textAlign: 'center',
+      lineHeight: 22,
+      marginBottom: 16,
+    },
+    errorDetail: {
+      color: t.appColors.error,
+      fontSize: 12,
+      textAlign: 'center',
+      fontFamily: 'monospace',
+      marginBottom: 24,
+      paddingHorizontal: 16,
+    },
+    button: {
+      marginTop: 8,
+    },
+  });

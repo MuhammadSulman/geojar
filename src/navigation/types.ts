@@ -19,7 +19,7 @@ export type HomeStackParamList = {
 };
 
 export type MapStackParamList = {
-  Map: undefined;
+  Map: {focusLatitude?: number; focusLongitude?: number} | undefined;
   AddPlace: {latitude?: number; longitude?: number} | undefined;
   PlaceDetail: {placeId: string};
 };

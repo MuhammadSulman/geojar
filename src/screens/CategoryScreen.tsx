@@ -1,11 +1,16 @@
 import React from 'react';
 import {View, StyleSheet} from 'react-native';
 import {Text} from 'react-native-paper';
+import {useAppTheme} from '@/constants/theme';
 
 export default function CategoryScreen() {
+  const theme = useAppTheme();
   return (
-    <View style={styles.container}>
-      <Text variant="headlineSmall" style={styles.text}>
+    <View
+      style={[styles.container, {backgroundColor: theme.appColors.background}]}>
+      <Text
+        variant="headlineSmall"
+        style={{color: theme.appColors.onSurface}}>
         Categories
       </Text>
     </View>
@@ -13,6 +18,9 @@ export default function CategoryScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0D0F14'},
-  text: {color: '#F0F2F8'},
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
 });

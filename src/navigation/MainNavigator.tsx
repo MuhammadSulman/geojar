@@ -2,6 +2,7 @@ import React from 'react';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import {useAppTheme} from '@/constants/theme';
 import type {
   MainTabParamList,
   HomeStackParamList,
@@ -82,6 +83,7 @@ const TAB_ICONS: Record<keyof MainTabParamList, string> = {
 };
 
 export default function MainNavigator() {
+  const theme = useAppTheme();
   return (
     <Tab.Navigator
       screenOptions={({route}) => ({
@@ -89,10 +91,10 @@ export default function MainNavigator() {
         tabBarIcon: ({color, size}) => (
           <Icon name={TAB_ICONS[route.name]} size={size} color={color} />
         ),
-        tabBarActiveTintColor: '#16A34A',
-        tabBarInactiveTintColor: '#7B82A0',
+        tabBarActiveTintColor: theme.appColors.primary,
+        tabBarInactiveTintColor: theme.appColors.onSurfaceMuted,
         tabBarStyle: {
-          backgroundColor: '#161920',
+          backgroundColor: theme.appColors.surfaceAlt,
           borderTopWidth: 0,
         },
       })}>

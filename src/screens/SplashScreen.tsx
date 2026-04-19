@@ -1,10 +1,13 @@
 import React from 'react';
 import {View, ActivityIndicator, StyleSheet} from 'react-native';
+import {useAppTheme} from '@/constants/theme';
 
 export default function SplashScreen() {
+  const theme = useAppTheme();
   return (
-    <View style={styles.container}>
-      <ActivityIndicator size="large" color="#16A34A" />
+    <View
+      style={[styles.container, {backgroundColor: theme.appColors.background}]}>
+      <ActivityIndicator size="large" color={theme.appColors.primary} />
     </View>
   );
 }
@@ -14,6 +17,5 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#0D0F14',
   },
 });

@@ -1,27 +1,30 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   View,
-  Pressable,
   Linking,
   Platform,
-  Alert,
   StyleSheet,
   Animated,
 } from 'react-native';
 import MapLibreGL from '@maplibre/maplibre-react-native';
 import BottomSheet, {BottomSheetView} from '@gorhom/bottom-sheet';
 import {Text, Button, Chip} from 'react-native-paper';
+import Share from 'react-native-share';
 import Geolocation from 'react-native-geolocation-service';
-import {check, request, PERMISSIONS, RESULTS} from 'react-native-permissions';
-import {useNavigation} from '@react-navigation/native';
+import {check, PERMISSIONS, RESULTS} from 'react-native-permissions';
+import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
+import type {RouteProp} from '@react-navigation/native';
 import type {Place} from '@/types';
 import type {MapStackParamList} from '@/navigation/types';
 import {CATEGORIES} from '@/constants/categories';
 import {usePlacesStore} from '@/store/placesStore';
-import {MAP_STYLE} from '@/constants/mapStyle';
+import {getMapStyle} from '@/constants/mapStyle';
+import {useAppTheme, type AppTheme} from '@/constants/theme';
+import {useIsDark} from '@/store/themeStore';
 
 type Nav = NativeStackNavigationProp<MapStackParamList, 'Map'>;
+type Route = RouteProp<MapStackParamList, 'Map'>;
 
 const DEFAULT_CENTER: [number, number] = [-122.4194, 37.7749];
 const DEFAULT_ZOOM = 12;
@@ -30,7 +33,15 @@ MapLibreGL.setAccessToken(null);
 
 export default function MapScreen() {
   const navigation = useNavigation<Nav>();
+  const route = useRoute<Route>();
+  const focusLat = route.params?.focusLatitude;
+  const focusLng = route.params?.focusLongitude;
   const places = usePlacesStore(s => s.places);
+  const theme = useAppTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+  const isDark = useIsDark();
+  const mapStyle = useMemo(() => getMapStyle(isDark), [isDark]);
+
   const mapRef = useRef<MapLibreGL.MapView>(null);
   const cameraRef = useRef<MapLibreGL.Camera>(null);
   const bottomSheetRef = useRef<BottomSheet>(null);
@@ -46,10 +57,8 @@ export default function MapScreen() {
   }>({latitude: DEFAULT_CENTER[1], longitude: DEFAULT_CENTER[0]});
   const [isDragging, setIsDragging] = useState(false);
 
-  // Pin lift animation
   const pinTranslateY = useRef(new Animated.Value(0)).current;
   const pinScale = useRef(new Animated.Value(1)).current;
-  const shadowScale = useRef(new Animated.Value(1)).current;
 
   const animatePin = useCallback(
     (lifting: boolean) => {
@@ -64,17 +73,11 @@ export default function MapScreen() {
           useNativeDriver: true,
           friction: 6,
         }),
-        Animated.spring(shadowScale, {
-          toValue: lifting ? 0.7 : 1,
-          useNativeDriver: true,
-          friction: 6,
-        }),
       ]).start();
     },
-    [pinTranslateY, pinScale, shadowScale],
+    [pinTranslateY, pinScale],
   );
 
-  // Fetch user location on mount
   useEffect(() => {
     const permission = Platform.select({
       ios: PERMISSIONS.IOS.LOCATION_WHEN_IN_USE,
@@ -92,25 +95,29 @@ export default function MapScreen() {
               pos.coords.latitude,
             ];
             setUserLocation(coord);
-            setCenterCoords({
-              latitude: pos.coords.latitude,
-              longitude: pos.coords.longitude,
-            });
-            cameraRef.current?.setCamera({
-              centerCoordinate: coord,
-              zoomLevel: 15,
-              animationDuration: 500,
-            });
+            if (focusLat == null || focusLng == null) {
+              setCenterCoords({
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude,
+              });
+              cameraRef.current?.setCamera({
+                centerCoordinate: coord,
+                zoomLevel: 15,
+                animationDuration: 500,
+              });
+            }
           },
           () => {},
           {enableHighAccuracy: true, timeout: 15000, maximumAge: 10000},
         );
       }
     });
-  }, []);
+  }, [focusLat, focusLng]);
 
-  // Fit to saved places after initial load
   useEffect(() => {
+    if (focusLat != null || focusLng != null) {
+      return;
+    }
     if (places.length > 0 && cameraRef.current) {
       if (places.length === 1) {
         cameraRef.current.setCamera({
@@ -129,53 +136,21 @@ export default function MapScreen() {
         );
       }
     }
-  }, [places]);
+  }, [places, focusLat, focusLng]);
 
-  const requestLocationPermission = async (): Promise<boolean> => {
-    const permission = Platform.select({
-      ios: PERMISSIONS.IOS.LOCATION_WHEN_IN_USE,
-      android: PERMISSIONS.ANDROID.ACCESS_FINE_LOCATION,
-    });
-    if (!permission) {
-      return false;
-    }
-    let status = await check(permission);
-    if (status === RESULTS.DENIED) {
-      status = await request(permission);
-    }
-    if (status === RESULTS.GRANTED || status === RESULTS.LIMITED) {
-      return true;
-    }
-    Alert.alert(
-      'Location Permission Required',
-      'Please enable location access in Settings.',
-      [
-        {text: 'Cancel', style: 'cancel'},
-        {text: 'Open Settings', onPress: () => Linking.openSettings()},
-      ],
-    );
-    return false;
-  };
-
-  const handleMyLocation = async () => {
-    const granted = await requestLocationPermission();
-    if (!granted) {
+  // React to a shared / deep-linked location: center camera and align the
+  // floating pin so "Save This Location" saves the shared coords.
+  useEffect(() => {
+    if (focusLat == null || focusLng == null) {
       return;
     }
-    Geolocation.getCurrentPosition(
-      position => {
-        const {latitude, longitude} = position.coords;
-        setUserLocation([longitude, latitude]);
-        cameraRef.current?.setCamera({
-          centerCoordinate: [longitude, latitude],
-          zoomLevel: 15,
-          animationDuration: 500,
-        });
-      },
-      error => Alert.alert('Location Error', error.message),
-      {enableHighAccuracy: true, timeout: 15000, maximumAge: 10000},
-    );
-  };
+    setCenterCoords({latitude: focusLat, longitude: focusLng});
+    cameraRef.current?.setCamera({
+      centerCoordinate: [focusLng, focusLat],
+      zoomLevel: 16,
+      animationDuration: 600,
+    });
+  }, [focusLat, focusLng]);
 
   const handleMarkerPress = (place: Place) => {
     setSelectedPlace(place);
@@ -230,6 +205,27 @@ export default function MapScreen() {
     navigation.navigate('PlaceDetail', {placeId: selectedPlace.id});
   }, [selectedPlace, navigation]);
 
+  const handleShare = useCallback(async () => {
+    if (!selectedPlace) {
+      return;
+    }
+    const url = `https://www.google.com/maps/search/?api=1&query=${selectedPlace.latitude},${selectedPlace.longitude}`;
+    const lines = [`📍 ${selectedPlace.name}`];
+    if (selectedPlace.note) {
+      lines.push(selectedPlace.note);
+    }
+    lines.push(url);
+    try {
+      await Share.open({
+        title: selectedPlace.name,
+        message: lines.join('\n'),
+        failOnCancel: false,
+      });
+    } catch {
+      // user cancelled or share failed silently
+    }
+  }, [selectedPlace]);
+
   const selectedCategory = selectedPlace
     ? CATEGORIES.find(c => c.name === selectedPlace.category)
     : null;
@@ -239,7 +235,7 @@ export default function MapScreen() {
       <MapLibreGL.MapView
         ref={mapRef}
         style={styles.map}
-        mapStyle={MAP_STYLE}
+        mapStyle={mapStyle}
         logoEnabled={false}
         attributionEnabled={false}
         onRegionIsChanging={handleRegionIsChanging}
@@ -247,8 +243,11 @@ export default function MapScreen() {
         <MapLibreGL.Camera
           ref={cameraRef}
           defaultSettings={{
-            centerCoordinate: DEFAULT_CENTER,
-            zoomLevel: DEFAULT_ZOOM,
+            centerCoordinate:
+              focusLat != null && focusLng != null
+                ? [focusLng, focusLat]
+                : DEFAULT_CENTER,
+            zoomLevel: focusLat != null ? 16 : DEFAULT_ZOOM,
           }}
         />
         {userLocation && (
@@ -281,63 +280,39 @@ export default function MapScreen() {
         ))}
       </MapLibreGL.MapView>
 
-      {/* Fixed center pin overlay */}
       <View style={styles.centerPinWrapper} pointerEvents="none">
-        {/* Shadow on the ground */}
-        <Animated.View
-          style={[
-            styles.pinShadow,
-            {transform: [{scaleX: shadowScale}, {scaleY: shadowScale}]},
-          ]}
-        />
-        {/* The pin itself */}
         <Animated.View
           style={[
             styles.centerPin,
             {
-              transform: [
-                {translateY: pinTranslateY},
-                {scale: pinScale},
-              ],
+              transform: [{translateY: pinTranslateY}, {scale: pinScale}],
             },
           ]}>
           <View style={styles.pinHead}>
             <Text style={styles.pinIcon}>📍</Text>
           </View>
-          <View style={styles.pinNeedle} />
         </Animated.View>
       </View>
 
-      {/* Coordinate badge */}
       <View style={styles.coordBadge}>
         <Text style={styles.coordText}>
-          {centerCoords.latitude.toFixed(5)}, {centerCoords.longitude.toFixed(5)}
+          {centerCoords.latitude.toFixed(5)},{' '}
+          {centerCoords.longitude.toFixed(5)}
         </Text>
       </View>
 
-      {/* Top-right button strip */}
-      <View style={styles.buttonStrip}>
-        <Pressable style={styles.mapBtn} onPress={handleMyLocation}>
-          <Text style={styles.mapBtnText}>📡</Text>
-        </Pressable>
-      </View>
-
-      {/* Save Location button */}
       <View style={styles.saveBar}>
-        <Text style={styles.saveHint}>
-          Drag the map to move the pin
-        </Text>
+        <Text style={styles.saveHint}>Drag the map to move the pin</Text>
         <Button
           mode="contained"
           onPress={handleSavePin}
-          buttonColor="#16A34A"
+          buttonColor={theme.appColors.primary}
           style={styles.saveBtn}
           icon="content-save-outline">
           Save This Location
         </Button>
       </View>
 
-      {/* Bottom Sheet for place details */}
       <BottomSheet
         ref={bottomSheetRef}
         index={-1}
@@ -375,15 +350,23 @@ export default function MapScreen() {
                   mode="contained"
                   onPress={handleViewDetail}
                   style={styles.sheetBtn}
-                  buttonColor="#16A34A">
-                  View Detail
+                  buttonColor={theme.appColors.primary}>
+                  Detail
                 </Button>
                 <Button
                   mode="outlined"
                   onPress={handleGetDirections}
                   style={styles.sheetBtn}
-                  textColor="#16A34A">
-                  Get Directions
+                  textColor={theme.appColors.primary}>
+                  Directions
+                </Button>
+                <Button
+                  mode="outlined"
+                  onPress={handleShare}
+                  style={styles.sheetBtn}
+                  icon="share-variant"
+                  textColor={theme.appColors.primary}>
+                  Share
                 </Button>
               </View>
             </>
@@ -394,222 +377,169 @@ export default function MapScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  map: {
-    flex: 1,
-  },
-
-  // ── Fixed center pin ──
-  centerPinWrapper: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 80, // offset for save bar
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  centerPin: {
-    alignItems: 'center',
-    marginBottom: 36, // offset so pin tip = center
-  },
-  pinHead: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 3,
-    borderColor: '#16A34A',
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 4},
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-  },
-  pinIcon: {
-    fontSize: 24,
-  },
-  pinNeedle: {
-    width: 3,
-    height: 18,
-    backgroundColor: '#16A34A',
-    borderBottomLeftRadius: 2,
-    borderBottomRightRadius: 2,
-    marginTop: -1,
-  },
-  pinShadow: {
-    position: 'absolute',
-    width: 16,
-    height: 6,
-    borderRadius: 8,
-    backgroundColor: 'rgba(0,0,0,0.25)',
-    top: '50%',
-    marginTop: 26, // below the pin tip
-  },
-
-  // ── Coordinate badge ──
-  coordBadge: {
-    position: 'absolute',
-    top: 52,
-    alignSelf: 'center',
-    backgroundColor: '#1E2230EE',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    elevation: 4,
-  },
-  coordText: {
-    color: '#F0F2F8',
-    fontSize: 12,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-
-  // ── User location dot ──
-  userDotOuter: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: 'rgba(66, 133, 244, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  userDotInner: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: '#4285F4',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
-
-  // ── Place markers ──
-  markerContainer: {
-    alignItems: 'center',
-  },
-  placeMarker: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderColor: '#16A34A',
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-  },
-  placeMarkerEmoji: {
-    fontSize: 18,
-  },
-  markerLabel: {
-    backgroundColor: '#1E2230',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    marginTop: 3,
-    maxWidth: 90,
-    elevation: 3,
-  },
-  markerLabelText: {
-    color: '#F0F2F8',
-    fontSize: 9,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-
-  // ── Button strip ──
-  buttonStrip: {
-    position: 'absolute',
-    top: 100,
-    right: 16,
-    gap: 10,
-  },
-  mapBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#1E2230',
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-  },
-  mapBtnText: {
-    fontSize: 20,
-  },
-
-  // ── Save bar ──
-  saveBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#1E2230',
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: Platform.OS === 'ios' ? 30 : 16,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    elevation: 10,
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: -3},
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-  },
-  saveHint: {
-    color: '#7B82A0',
-    fontSize: 12,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  saveBtn: {
-    borderRadius: 12,
-  },
-
-  // ── Bottom sheet ──
-  sheetBackground: {
-    backgroundColor: '#1E2230',
-  },
-  sheetHandle: {
-    backgroundColor: '#7B82A0',
-  },
-  sheetContent: {
-    padding: 20,
-    alignItems: 'center',
-  },
-  sheetEmoji: {
-    fontSize: 40,
-    marginBottom: 8,
-  },
-  sheetName: {
-    color: '#F0F2F8',
-    marginBottom: 8,
-  },
-  sheetChip: {
-    marginBottom: 10,
-  },
-  sheetNote: {
-    color: '#7B82A0',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  sheetButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    width: '100%',
-  },
-  sheetBtn: {
-    flex: 1,
-  },
-});
+const makeStyles = (t: AppTheme) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+    },
+    map: {
+      flex: 1,
+    },
+    centerPinWrapper: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 80,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    centerPin: {
+      alignItems: 'center',
+    },
+    pinHead: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: t.appColors.markerBg,
+      borderWidth: 3,
+      borderColor: t.appColors.primary,
+      justifyContent: 'center',
+      alignItems: 'center',
+      elevation: 8,
+      shadowColor: '#000',
+      shadowOffset: {width: 0, height: 4},
+      shadowOpacity: 0.3,
+      shadowRadius: 6,
+    },
+    pinIcon: {
+      fontSize: 24,
+    },
+    coordBadge: {
+      position: 'absolute',
+      top: 52,
+      alignSelf: 'center',
+      backgroundColor: t.appColors.surface + 'EE',
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 16,
+      elevation: 4,
+    },
+    coordText: {
+      color: t.appColors.onSurface,
+      fontSize: 12,
+      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    },
+    userDotOuter: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: 'rgba(66, 133, 244, 0.2)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    userDotInner: {
+      width: 14,
+      height: 14,
+      borderRadius: 7,
+      backgroundColor: '#4285F4',
+      borderWidth: 2,
+      borderColor: '#FFFFFF',
+    },
+    markerContainer: {
+      alignItems: 'center',
+    },
+    placeMarker: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: t.appColors.markerBg,
+      borderWidth: 2,
+      borderColor: t.appColors.primary,
+      justifyContent: 'center',
+      alignItems: 'center',
+      elevation: 5,
+      shadowColor: '#000',
+      shadowOffset: {width: 0, height: 2},
+      shadowOpacity: 0.3,
+      shadowRadius: 3,
+    },
+    placeMarkerEmoji: {
+      fontSize: 18,
+    },
+    markerLabel: {
+      backgroundColor: t.appColors.markerLabelBg,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+      marginTop: 3,
+      maxWidth: 90,
+      elevation: 3,
+    },
+    markerLabelText: {
+      color: t.appColors.markerLabelText,
+      fontSize: 9,
+      fontWeight: '600',
+      textAlign: 'center',
+    },
+    saveBar: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      backgroundColor: t.appColors.surface,
+      paddingHorizontal: 16,
+      paddingTop: 10,
+      paddingBottom: Platform.OS === 'ios' ? 30 : 16,
+      borderTopLeftRadius: 16,
+      borderTopRightRadius: 16,
+      elevation: 10,
+      shadowColor: '#000',
+      shadowOffset: {width: 0, height: -3},
+      shadowOpacity: 0.3,
+      shadowRadius: 6,
+    },
+    saveHint: {
+      color: t.appColors.onSurfaceMuted,
+      fontSize: 12,
+      textAlign: 'center',
+      marginBottom: 8,
+    },
+    saveBtn: {
+      borderRadius: 12,
+    },
+    sheetBackground: {
+      backgroundColor: t.appColors.surface,
+    },
+    sheetHandle: {
+      backgroundColor: t.appColors.onSurfaceMuted,
+    },
+    sheetContent: {
+      padding: 20,
+      alignItems: 'center',
+    },
+    sheetEmoji: {
+      fontSize: 40,
+      marginBottom: 8,
+    },
+    sheetName: {
+      color: t.appColors.onSurface,
+      marginBottom: 8,
+    },
+    sheetChip: {
+      marginBottom: 10,
+    },
+    sheetNote: {
+      color: t.appColors.onSurfaceMuted,
+      textAlign: 'center',
+      marginBottom: 16,
+    },
+    sheetButtons: {
+      flexDirection: 'row',
+      gap: 12,
+      width: '100%',
+    },
+    sheetBtn: {
+      flex: 1,
+    },
+  });
