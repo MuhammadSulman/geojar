@@ -4,14 +4,14 @@ import {List, Text, Divider, SegmentedButtons} from 'react-native-paper';
 import {pick} from 'react-native-document-picker';
 import RNFS from 'react-native-fs';
 import DeviceInfo from 'react-native-device-info';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useNavigation} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {SettingsStackParamList} from '@/navigation/types';
-import type {Place} from '@/types';
-import {importPlaces, deleteAllPlaces} from '@/database/queries';
 import {usePlacesStore} from '@/store/placesStore';
 import {useThemeStore, type ThemeMode} from '@/store/themeStore';
 import {useAppTheme, type AppTheme} from '@/constants/theme';
+import {useToast} from '@/components/Toast';
 
 type Nav = NativeStackNavigationProp<SettingsStackParamList, 'Settings'>;
 
@@ -27,10 +27,13 @@ const THEME_OPTIONS: {value: ThemeMode; label: string; icon: string}[] = [
 export default function SettingsScreen() {
   const navigation = useNavigation<Nav>();
   const theme = useAppTheme();
-  const styles = useMemo(() => makeStyles(theme), [theme]);
-  const loadPlaces = usePlacesStore(s => s.loadPlaces);
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => makeStyles(theme, insets.top), [theme, insets.top]);
+  const importPlaces = usePlacesStore(s => s.importPlaces);
+  const deleteAllPlaces = usePlacesStore(s => s.deleteAllPlaces);
   const themeMode = useThemeStore(s => s.mode);
   const setThemeMode = useThemeStore(s => s.setMode);
+  const {showToast} = useToast();
   const [appVersion, setAppVersion] = useState('');
 
   useEffect(() => {
@@ -47,7 +50,7 @@ export default function SettingsScreen() {
         type: ['application/json'],
       });
       const content = await RNFS.readFile(result.uri, 'utf8');
-      const data: Place[] = JSON.parse(content);
+      const data = JSON.parse(content);
 
       if (!Array.isArray(data)) {
         Alert.alert('Invalid File', 'The file does not contain valid data.');
@@ -62,9 +65,21 @@ export default function SettingsScreen() {
           {
             text: 'Import',
             onPress: async () => {
-              await importPlaces(data);
-              await loadPlaces();
-              Alert.alert('Success', `${data.length} places imported.`);
+              try {
+                const {imported, skipped} = await importPlaces(data);
+                if (imported === 0) {
+                  showToast('No valid places in file', 'error');
+                } else if (skipped > 0) {
+                  showToast(
+                    `${imported} imported, ${skipped} skipped`,
+                    'info',
+                  );
+                } else {
+                  showToast(`${imported} places imported`);
+                }
+              } catch {
+                showToast('Import failed', 'error');
+              }
             },
           },
         ],
@@ -76,7 +91,7 @@ export default function SettingsScreen() {
       }
       Alert.alert('Error', 'Failed to import backup file.');
     }
-  }, [loadPlaces]);
+  }, [importPlaces, showToast]);
 
   const handleDeleteAll = useCallback(() => {
     Alert.alert(
@@ -89,13 +104,12 @@ export default function SettingsScreen() {
           style: 'destructive',
           onPress: async () => {
             await deleteAllPlaces();
-            await loadPlaces();
-            Alert.alert('Done', 'All places have been deleted.');
+            showToast('All places deleted', 'error');
           },
         },
       ],
     );
-  }, [loadPlaces]);
+  }, [deleteAllPlaces, showToast]);
 
   const handleRateApp = () => {
     Linking.openURL(PLAY_STORE_URL);
@@ -187,7 +201,7 @@ export default function SettingsScreen() {
   );
 }
 
-const makeStyles = (t: AppTheme) =>
+const makeStyles = (t: AppTheme, topInset: number) =>
   StyleSheet.create({
     container: {
       flex: 1,
@@ -195,7 +209,7 @@ const makeStyles = (t: AppTheme) =>
     },
     title: {
       color: t.appColors.onSurface,
-      paddingTop: 56,
+      paddingTop: topInset + 12,
       paddingHorizontal: 16,
       paddingBottom: 8,
     },

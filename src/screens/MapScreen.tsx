@@ -5,25 +5,30 @@ import {
   Platform,
   StyleSheet,
   Animated,
+  BackHandler,
 } from 'react-native';
 import MapLibreGL from '@maplibre/maplibre-react-native';
 import BottomSheet, {BottomSheetView} from '@gorhom/bottom-sheet';
 import {Text, Button, Chip} from 'react-native-paper';
 import Share from 'react-native-share';
-import Geolocation from 'react-native-geolocation-service';
-import {check, PERMISSIONS, RESULTS} from 'react-native-permissions';
-import {useNavigation, useRoute} from '@react-navigation/native';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import {useFocusEffect, useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
 import type {Place} from '@/types';
-import type {MapStackParamList} from '@/navigation/types';
+import type {CompositeNavigationProp} from '@react-navigation/native';
+import type {MapStackParamList, RootStackParamList} from '@/navigation/types';
 import {CATEGORIES} from '@/constants/categories';
 import {usePlacesStore} from '@/store/placesStore';
+import {useLocation} from '@/hooks/useLocation';
 import {getMapStyle} from '@/constants/mapStyle';
-import {useAppTheme, type AppTheme} from '@/constants/theme';
+import {useAppTheme, withAlpha, type AppTheme} from '@/constants/theme';
 import {useIsDark} from '@/store/themeStore';
 
-type Nav = NativeStackNavigationProp<MapStackParamList, 'Map'>;
+type Nav = CompositeNavigationProp<
+  NativeStackNavigationProp<MapStackParamList, 'Map'>,
+  NativeStackNavigationProp<RootStackParamList>
+>;
 type Route = RouteProp<MapStackParamList, 'Map'>;
 
 const DEFAULT_CENTER: [number, number] = [-122.4194, 37.7749];
@@ -38,7 +43,8 @@ export default function MapScreen() {
   const focusLng = route.params?.focusLongitude;
   const places = usePlacesStore(s => s.places);
   const theme = useAppTheme();
-  const styles = useMemo(() => makeStyles(theme), [theme]);
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => makeStyles(theme, insets.bottom), [theme, insets.bottom]);
   const isDark = useIsDark();
   const mapStyle = useMemo(() => getMapStyle(isDark), [isDark]);
 
@@ -46,6 +52,7 @@ export default function MapScreen() {
   const cameraRef = useRef<MapLibreGL.Camera>(null);
   const bottomSheetRef = useRef<BottomSheet>(null);
   const snapPoints = useMemo(() => ['35%'], []);
+  const {getCurrentLocationIfAllowed} = useLocation();
 
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(
@@ -56,9 +63,12 @@ export default function MapScreen() {
     longitude: number;
   }>({latitude: DEFAULT_CENTER[1], longitude: DEFAULT_CENTER[0]});
   const [isDragging, setIsDragging] = useState(false);
+  const [mapLoadFailed, setMapLoadFailed] = useState(false);
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
 
   const pinTranslateY = useRef(new Animated.Value(0)).current;
   const pinScale = useRef(new Animated.Value(1)).current;
+  const hasAutoFittedRef = useRef(false);
 
   const animatePin = useCallback(
     (lifting: boolean) => {
@@ -79,62 +89,66 @@ export default function MapScreen() {
   );
 
   useEffect(() => {
-    const permission = Platform.select({
-      ios: PERMISSIONS.IOS.LOCATION_WHEN_IN_USE,
-      android: PERMISSIONS.ANDROID.ACCESS_FINE_LOCATION,
-    });
-    if (!permission) {
-      return;
-    }
-    check(permission).then(status => {
-      if (status === RESULTS.GRANTED || status === RESULTS.LIMITED) {
-        Geolocation.getCurrentPosition(
-          pos => {
-            const coord: [number, number] = [
-              pos.coords.longitude,
-              pos.coords.latitude,
-            ];
-            setUserLocation(coord);
-            if (focusLat == null || focusLng == null) {
-              setCenterCoords({
-                latitude: pos.coords.latitude,
-                longitude: pos.coords.longitude,
-              });
-              cameraRef.current?.setCamera({
-                centerCoordinate: coord,
-                zoomLevel: 15,
-                animationDuration: 500,
-              });
-            }
-          },
-          () => {},
-          {enableHighAccuracy: true, timeout: 15000, maximumAge: 10000},
-        );
+    let cancelled = false;
+    getCurrentLocationIfAllowed().then(loc => {
+      if (cancelled || !loc) {
+        return;
+      }
+      const coord: [number, number] = [loc.longitude, loc.latitude];
+      setUserLocation(coord);
+      if (focusLat == null && focusLng == null) {
+        setCenterCoords({latitude: loc.latitude, longitude: loc.longitude});
+        cameraRef.current?.setCamera({
+          centerCoordinate: coord,
+          zoomLevel: 15,
+          animationDuration: 500,
+        });
       }
     });
-  }, [focusLat, focusLng]);
+    return () => {
+      cancelled = true;
+    };
+  }, [focusLat, focusLng, getCurrentLocationIfAllowed]);
 
   useEffect(() => {
     if (focusLat != null || focusLng != null) {
       return;
     }
-    if (places.length > 0 && cameraRef.current) {
-      if (places.length === 1) {
-        cameraRef.current.setCamera({
-          centerCoordinate: [places[0].longitude, places[0].latitude],
-          zoomLevel: 14,
-          animationDuration: 500,
-        });
-      } else {
-        const lngs = places.map(p => p.longitude);
-        const lats = places.map(p => p.latitude);
-        cameraRef.current.fitBounds(
-          [Math.max(...lngs), Math.max(...lats)],
-          [Math.min(...lngs), Math.min(...lats)],
-          60,
-          500,
-        );
-      }
+    if (hasAutoFittedRef.current || places.length === 0 || !cameraRef.current) {
+      return;
+    }
+    hasAutoFittedRef.current = true;
+
+    if (places.length === 1) {
+      cameraRef.current.setCamera({
+        centerCoordinate: [places[0].longitude, places[0].latitude],
+        zoomLevel: 14,
+        animationDuration: 500,
+      });
+      return;
+    }
+
+    const lngs = places.map(p => p.longitude);
+    const lats = places.map(p => p.latitude);
+    const minLng = Math.min(...lngs);
+    const maxLng = Math.max(...lngs);
+    const minLat = Math.min(...lats);
+    const maxLat = Math.max(...lats);
+    const boundsAreDegenerate =
+      Math.abs(maxLng - minLng) < 1e-6 && Math.abs(maxLat - minLat) < 1e-6;
+    if (boundsAreDegenerate) {
+      cameraRef.current.setCamera({
+        centerCoordinate: [lngs[0], lats[0]],
+        zoomLevel: 14,
+        animationDuration: 500,
+      });
+    } else {
+      cameraRef.current.fitBounds(
+        [maxLng, maxLat],
+        [minLng, minLat],
+        60,
+        500,
+      );
     }
   }, [places, focusLat, focusLng]);
 
@@ -151,6 +165,24 @@ export default function MapScreen() {
       animationDuration: 600,
     });
   }, [focusLat, focusLng]);
+
+  // Android hardware back: if the place details sheet is open, close it
+  // instead of popping the screen off the stack.
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== 'android') {
+        return;
+      }
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (isSheetOpen) {
+          bottomSheetRef.current?.close();
+          return true;
+        }
+        return false;
+      });
+      return () => sub.remove();
+    }, [isSheetOpen]),
+  );
 
   const handleMarkerPress = (place: Place) => {
     setSelectedPlace(place);
@@ -238,6 +270,8 @@ export default function MapScreen() {
         mapStyle={mapStyle}
         logoEnabled={false}
         attributionEnabled={false}
+        onDidFailLoadingMap={() => setMapLoadFailed(true)}
+        onDidFinishLoadingMap={() => setMapLoadFailed(false)}
         onRegionIsChanging={handleRegionIsChanging}
         onRegionDidChange={handleRegionDidChange}>
         <MapLibreGL.Camera
@@ -259,25 +293,25 @@ export default function MapScreen() {
             </View>
           </MapLibreGL.PointAnnotation>
         )}
-        {places.map(place => (
-          <MapLibreGL.PointAnnotation
-            key={place.id}
-            id={place.id}
-            coordinate={[place.longitude, place.latitude]}
-            onSelected={() => handleMarkerPress(place)}>
-            <View style={styles.markerContainer}>
-              <View style={styles.placeMarker}>
-                <Text style={styles.placeMarkerEmoji}>{place.emoji}</Text>
+        {places.map(place => {
+          const cat = CATEGORIES.find(c => c.name === place.category);
+          const pinColor = cat?.color ?? theme.appColors.primary;
+          return (
+            <MapLibreGL.PointAnnotation
+              key={place.id}
+              id={place.id}
+              coordinate={[place.longitude, place.latitude]}
+              onSelected={() => handleMarkerPress(place)}>
+              <View style={styles.markerContainer}>
+                <View style={[styles.placeMarker, {backgroundColor: pinColor}]}>
+                  <Text style={styles.placeMarkerEmoji}>{place.emoji}</Text>
+                </View>
+                <View style={[styles.markerTail, {borderTopColor: pinColor}]} />
               </View>
-              <View style={styles.markerLabel}>
-                <Text style={styles.markerLabelText} numberOfLines={1}>
-                  {place.name}
-                </Text>
-              </View>
-            </View>
-            <MapLibreGL.Callout title={place.name} />
-          </MapLibreGL.PointAnnotation>
-        ))}
+              <MapLibreGL.Callout title={place.name} />
+            </MapLibreGL.PointAnnotation>
+          );
+        })}
       </MapLibreGL.MapView>
 
       <View style={styles.centerPinWrapper} pointerEvents="none">
@@ -301,6 +335,14 @@ export default function MapScreen() {
         </Text>
       </View>
 
+      {mapLoadFailed && (
+        <View style={styles.mapErrorBanner}>
+          <Text style={styles.mapErrorText}>
+            Map tiles failed to load. Check your connection.
+          </Text>
+        </View>
+      )}
+
       <View style={styles.saveBar}>
         <Text style={styles.saveHint}>Drag the map to move the pin</Text>
         <Button
@@ -318,6 +360,7 @@ export default function MapScreen() {
         index={-1}
         snapPoints={snapPoints}
         enablePanDownToClose
+        onChange={index => setIsSheetOpen(index >= 0)}
         backgroundStyle={styles.sheetBackground}
         handleIndicatorStyle={styles.sheetHandle}>
         <BottomSheetView style={styles.sheetContent}>
@@ -331,7 +374,7 @@ export default function MapScreen() {
                 <Chip
                   style={[
                     styles.sheetChip,
-                    {backgroundColor: selectedCategory.color + '33'},
+                    {backgroundColor: withAlpha(selectedCategory.color, 0.2)},
                   ]}
                   textStyle={{color: selectedCategory.color}}>
                   {selectedCategory.emoji} {selectedCategory.name}
@@ -377,7 +420,7 @@ export default function MapScreen() {
   );
 }
 
-const makeStyles = (t: AppTheme) =>
+const makeStyles = (t: AppTheme, bottomInset: number) =>
   StyleSheet.create({
     container: {
       flex: 1,
@@ -398,28 +441,19 @@ const makeStyles = (t: AppTheme) =>
       alignItems: 'center',
     },
     pinHead: {
-      width: 48,
-      height: 48,
-      borderRadius: 24,
-      backgroundColor: t.appColors.markerBg,
-      borderWidth: 3,
-      borderColor: t.appColors.primary,
+      width: 36,
+      height: 36,
       justifyContent: 'center',
       alignItems: 'center',
-      elevation: 8,
-      shadowColor: '#000',
-      shadowOffset: {width: 0, height: 4},
-      shadowOpacity: 0.3,
-      shadowRadius: 6,
     },
     pinIcon: {
-      fontSize: 24,
+      fontSize: 32,
     },
     coordBadge: {
       position: 'absolute',
       top: 52,
       alignSelf: 'center',
-      backgroundColor: t.appColors.surface + 'EE',
+      backgroundColor: withAlpha(t.appColors.surface, 0.93),
       paddingHorizontal: 12,
       paddingVertical: 6,
       borderRadius: 16,
@@ -429,6 +463,23 @@ const makeStyles = (t: AppTheme) =>
       color: t.appColors.onSurface,
       fontSize: 12,
       fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    },
+    mapErrorBanner: {
+      position: 'absolute',
+      top: 96,
+      left: 16,
+      right: 16,
+      backgroundColor: withAlpha(t.appColors.error, 0.92),
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 10,
+      elevation: 6,
+    },
+    mapErrorText: {
+      color: '#FFFFFF',
+      fontSize: 13,
+      fontWeight: '600',
+      textAlign: 'center',
     },
     userDotOuter: {
       width: 24,
@@ -450,12 +501,11 @@ const makeStyles = (t: AppTheme) =>
       alignItems: 'center',
     },
     placeMarker: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      backgroundColor: t.appColors.markerBg,
+      width: 30,
+      height: 30,
+      borderRadius: 15,
       borderWidth: 2,
-      borderColor: t.appColors.primary,
+      borderColor: '#FFFFFF',
       justifyContent: 'center',
       alignItems: 'center',
       elevation: 5,
@@ -465,22 +515,17 @@ const makeStyles = (t: AppTheme) =>
       shadowRadius: 3,
     },
     placeMarkerEmoji: {
-      fontSize: 18,
+      fontSize: 16,
     },
-    markerLabel: {
-      backgroundColor: t.appColors.markerLabelBg,
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      borderRadius: 4,
-      marginTop: 3,
-      maxWidth: 90,
-      elevation: 3,
-    },
-    markerLabelText: {
-      color: t.appColors.markerLabelText,
-      fontSize: 9,
-      fontWeight: '600',
-      textAlign: 'center',
+    markerTail: {
+      width: 0,
+      height: 0,
+      marginTop: -2,
+      borderLeftWidth: 5,
+      borderRightWidth: 5,
+      borderTopWidth: 7,
+      borderLeftColor: 'transparent',
+      borderRightColor: 'transparent',
     },
     saveBar: {
       position: 'absolute',
@@ -490,7 +535,7 @@ const makeStyles = (t: AppTheme) =>
       backgroundColor: t.appColors.surface,
       paddingHorizontal: 16,
       paddingTop: 10,
-      paddingBottom: Platform.OS === 'ios' ? 30 : 16,
+      paddingBottom: Math.max(bottomInset, 16),
       borderTopLeftRadius: 16,
       borderTopRightRadius: 16,
       elevation: 10,

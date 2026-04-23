@@ -1,5 +1,7 @@
+import SQLite from 'react-native-sqlite-storage';
 import {v4 as uuid} from 'uuid';
 import {Place, CategoryName} from '@/types';
+import {CATEGORIES} from '@/constants/categories';
 import {getDatabase} from './db';
 
 interface PlaceRow {
@@ -188,16 +190,19 @@ export async function getFavoritePlaces(): Promise<Place[]> {
   return extractRows<PlaceRow>(results).map(rowToPlace);
 }
 
-export async function toggleFavorite(
-  id: string,
-  current: boolean,
-): Promise<void> {
+export async function toggleFavorite(id: string): Promise<boolean> {
   const db = await getDatabase();
   const now = new Date().toISOString();
   await db.executeSql(
-    'UPDATE places SET is_favorite = ?, updated_at = ? WHERE id = ?;',
-    [current ? 0 : 1, now, id],
+    'UPDATE places SET is_favorite = 1 - is_favorite, updated_at = ? WHERE id = ?;',
+    [now, id],
   );
+  const results = await db.executeSql(
+    'SELECT is_favorite FROM places WHERE id = ?;',
+    [id],
+  );
+  const row = results[0].rows.length > 0 ? results[0].rows.item(0) : null;
+  return row ? row.is_favorite === 1 : false;
 }
 
 export async function getAllPlacesForExport(): Promise<Place[]> {
@@ -208,28 +213,91 @@ export async function getAllPlacesForExport(): Promise<Place[]> {
   return extractRows<PlaceRow>(results).map(rowToPlace);
 }
 
-export async function importPlaces(places: Place[]): Promise<void> {
-  const db = await getDatabase();
-  for (const p of places) {
-    const id = p.id || uuid();
-    const now = new Date().toISOString();
-    await db.executeSql(
-      `INSERT OR REPLACE INTO places (id, name, latitude, longitude, category, note, emoji, is_favorite, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
-      [
-        id,
-        p.name,
-        p.latitude,
-        p.longitude,
-        p.category,
-        p.note ?? null,
-        p.emoji,
-        p.isFavorite ? 1 : 0,
-        p.createdAt || now,
-        p.updatedAt || now,
-      ],
-    );
+export interface ImportResult {
+  imported: number;
+  skipped: number;
+}
+
+const VALID_CATEGORY_NAMES = new Set<string>(CATEGORIES.map(c => c.name));
+
+function isValidPlace(p: unknown): p is Place {
+  if (!p || typeof p !== 'object') {
+    return false;
   }
+  const r = p as Record<string, unknown>;
+  if (typeof r.name !== 'string' || r.name.trim() === '') {
+    return false;
+  }
+  if (
+    typeof r.latitude !== 'number' ||
+    !Number.isFinite(r.latitude) ||
+    r.latitude < -90 ||
+    r.latitude > 90
+  ) {
+    return false;
+  }
+  if (
+    typeof r.longitude !== 'number' ||
+    !Number.isFinite(r.longitude) ||
+    r.longitude < -180 ||
+    r.longitude > 180
+  ) {
+    return false;
+  }
+  if (typeof r.category !== 'string' || !VALID_CATEGORY_NAMES.has(r.category)) {
+    return false;
+  }
+  if (typeof r.emoji !== 'string' || r.emoji === '') {
+    return false;
+  }
+  return true;
+}
+
+export async function importPlaces(places: unknown[]): Promise<ImportResult> {
+  const db = await getDatabase();
+  const valid: Place[] = [];
+  let skipped = 0;
+  for (const p of places) {
+    if (isValidPlace(p)) {
+      valid.push(p);
+    } else {
+      skipped++;
+    }
+  }
+  if (valid.length === 0) {
+    return {imported: 0, skipped};
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    db.transaction(
+      (tx: SQLite.Transaction) => {
+        const now = new Date().toISOString();
+        for (const p of valid) {
+          const id = p.id || uuid();
+          tx.executeSql(
+            `INSERT OR REPLACE INTO places (id, name, latitude, longitude, category, note, emoji, is_favorite, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+            [
+              id,
+              p.name,
+              p.latitude,
+              p.longitude,
+              p.category,
+              p.note ?? null,
+              p.emoji,
+              p.isFavorite ? 1 : 0,
+              p.createdAt || now,
+              p.updatedAt || now,
+            ],
+          );
+        }
+      },
+      (err: unknown) => reject(err),
+      () => resolve(),
+    );
+  });
+
+  return {imported: valid.length, skipped};
 }
 
 export async function deleteAllPlaces(): Promise<void> {

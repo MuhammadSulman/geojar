@@ -3,27 +3,28 @@ import {
   View,
   FlatList,
   Pressable,
-  Platform,
-  Alert,
-  Linking,
   StyleSheet,
   TextInput,
   ScrollView,
 } from 'react-native';
 import {Text} from 'react-native-paper';
-import Geolocation from 'react-native-geolocation-service';
-import {check, request, PERMISSIONS, RESULTS} from 'react-native-permissions';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useNavigation, useFocusEffect} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {CategoryName, SortOrder} from '@/types';
-import type {SearchStackParamList} from '@/navigation/types';
+import type {CompositeNavigationProp} from '@react-navigation/native';
+import type {SearchStackParamList, RootStackParamList} from '@/navigation/types';
 import {CATEGORIES} from '@/constants/categories';
 import PlaceCard from '@/components/PlaceCard';
 import {usePlacesStore} from '@/store/placesStore';
-import {useAppTheme, type AppTheme} from '@/constants/theme';
+import {useLocation} from '@/hooks/useLocation';
+import {useAppTheme, withAlpha, type AppTheme} from '@/constants/theme';
 
-type Nav = NativeStackNavigationProp<SearchStackParamList, 'Search'>;
+type Nav = CompositeNavigationProp<
+  NativeStackNavigationProp<SearchStackParamList, 'Search'>,
+  NativeStackNavigationProp<RootStackParamList>
+>;
 
 const SORT_OPTS: {label: string; value: SortOrder}[] = [
   {label: 'New', value: 'newest'},
@@ -49,7 +50,8 @@ export default function SearchScreen() {
   const loadPlaces = usePlacesStore(s => s.loadPlaces);
   const toggleFavorite = usePlacesStore(s => s.toggleFavorite);
   const theme = useAppTheme();
-  const styles = useMemo(() => makeStyles(theme), [theme]);
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => makeStyles(theme, insets.top), [theme, insets.top]);
 
   const [query, setQuery] = useState('');
   const [activeCat, setActiveCat] = useState<CategoryName | null>(null);
@@ -57,6 +59,7 @@ export default function SearchScreen() {
   const [userLoc, setUserLoc] = useState<{lat: number; lng: number} | null>(
     null,
   );
+  const {getCurrentLocation} = useLocation();
 
   useFocusEffect(
     useCallback(() => {
@@ -107,41 +110,17 @@ export default function SearchScreen() {
     return sorted;
   }, [places, query, activeCat, sort, userLoc]);
 
-  const handleSort = (s: SortOrder) => {
-    if (s === 'nearest') {
-      const perm = Platform.select({
-        ios: PERMISSIONS.IOS.LOCATION_WHEN_IN_USE,
-        android: PERMISSIONS.ANDROID.ACCESS_FINE_LOCATION,
-      });
-      if (!perm) {
-        return;
-      }
-      check(perm).then(async status => {
-        if (status === RESULTS.DENIED) {
-          status = await request(perm);
-        }
-        if (status !== RESULTS.GRANTED && status !== RESULTS.LIMITED) {
-          Alert.alert(
-            'Location Required',
-            'Enable location to sort by distance.',
-            [
-              {text: 'Cancel', style: 'cancel'},
-              {text: 'Settings', onPress: () => Linking.openSettings()},
-            ],
-          );
-          return;
-        }
-        Geolocation.getCurrentPosition(
-          pos => {
-            setUserLoc({lat: pos.coords.latitude, lng: pos.coords.longitude});
-            setSort('nearest');
-          },
-          err => Alert.alert('Error', err.message),
-          {enableHighAccuracy: true, timeout: 15000, maximumAge: 10000},
-        );
-      });
-    } else {
+  const handleSort = async (s: SortOrder) => {
+    if (s !== 'nearest') {
       setSort(s);
+      return;
+    }
+    try {
+      const loc = await getCurrentLocation();
+      setUserLoc({lat: loc.latitude, lng: loc.longitude});
+      setSort('nearest');
+    } catch {
+      // User cancelled, denied, or blocked — useLocation surfaces the blocked alert.
     }
   };
 
@@ -188,8 +167,8 @@ export default function SearchScreen() {
               style={[
                 styles.pill,
                 on && {
-                  backgroundColor: c.color + '22',
-                  borderColor: c.color + '44',
+                  backgroundColor: withAlpha(c.color, 0.13),
+                  borderColor: withAlpha(c.color, 0.27),
                 },
               ]}
               onPress={() =>
@@ -218,18 +197,28 @@ export default function SearchScreen() {
       </ScrollView>
 
       {filtered.length === 0 ? (
-        <View style={styles.empty}>
-          <Icon
-            name={
-              places.length === 0 ? 'map-marker-plus-outline' : 'magnify-close'
-            }
-            size={40}
-            color={theme.appColors.outline}
-          />
-          <Text style={styles.emptyText}>
-            {places.length === 0 ? 'No places saved yet' : 'No results'}
-          </Text>
-        </View>
+        places.length === 0 ? (
+          <Pressable
+            style={({pressed}) => [styles.empty, pressed && styles.emptyPressed]}
+            onPress={() => navigation.navigate('AddPlace')}>
+            <Icon
+              name="map-marker-plus-outline"
+              size={40}
+              color={theme.appColors.primary}
+            />
+            <Text style={styles.emptyText}>No places saved yet</Text>
+            <Text style={styles.emptyHint}>Tap to add your first place</Text>
+          </Pressable>
+        ) : (
+          <View style={styles.empty}>
+            <Icon
+              name="magnify-close"
+              size={40}
+              color={theme.appColors.outline}
+            />
+            <Text style={styles.emptyText}>No results</Text>
+          </View>
+        )
       ) : (
         <FlatList
           data={filtered}
@@ -248,12 +237,12 @@ export default function SearchScreen() {
   );
 }
 
-const makeStyles = (t: AppTheme) =>
+const makeStyles = (t: AppTheme, topInset: number) =>
   StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: t.appColors.background,
-      paddingTop: 48,
+      paddingTop: topInset + 12,
     },
     searchBox: {
       flexDirection: 'row',
@@ -292,7 +281,7 @@ const makeStyles = (t: AppTheme) =>
     },
     pillActive: {
       backgroundColor: t.appColors.primarySoft,
-      borderColor: t.appColors.primary + '44',
+      borderColor: withAlpha(t.appColors.primary, 0.27),
     },
     pillText: {
       color: t.appColors.onSurfaceMuted,
@@ -315,8 +304,16 @@ const makeStyles = (t: AppTheme) =>
       gap: 8,
       paddingBottom: 60,
     },
+    emptyPressed: {
+      opacity: 0.6,
+    },
     emptyText: {
       color: t.appColors.onSurfaceMuted,
       fontSize: 14,
+    },
+    emptyHint: {
+      color: t.appColors.primary,
+      fontSize: 13,
+      fontWeight: '600',
     },
   });

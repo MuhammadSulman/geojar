@@ -1,25 +1,25 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect} from 'react';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import type {RootStackParamList} from './types';
 import SplashScreen from '@/screens/SplashScreen';
 import OnboardingScreen from '@/screens/OnboardingScreen';
+import AddPlaceScreen from '@/screens/AddPlaceScreen';
+import PlaceDetailScreen from '@/screens/PlaceDetailScreen';
 import MainNavigator from './MainNavigator';
+import {useOnboardingStore} from '@/store/onboardingStore';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function RootNavigator() {
-  const [isReady, setIsReady] = useState(false);
-  const [hasOnboarded, setHasOnboarded] = useState(false);
+  const hydrated = useOnboardingStore(s => s.hydrated);
+  const hasOnboarded = useOnboardingStore(s => s.hasOnboarded);
+  const hydrate = useOnboardingStore(s => s.hydrate);
 
   useEffect(() => {
-    AsyncStorage.getItem('onboarding_complete').then(value => {
-      setHasOnboarded(value === 'true');
-      setIsReady(true);
-    });
-  }, []);
+    hydrate();
+  }, [hydrate]);
 
-  if (!isReady) {
+  if (!hydrated) {
     return <SplashScreen />;
   }
 
@@ -29,6 +29,16 @@ export default function RootNavigator() {
         <Stack.Screen name="Onboarding" component={OnboardingScreen} />
       )}
       <Stack.Screen name="Main" component={MainNavigator} />
+      <Stack.Screen
+        name="AddPlace"
+        component={AddPlaceScreen}
+        options={{presentation: 'modal'}}
+      />
+      <Stack.Screen
+        name="PlaceDetail"
+        component={PlaceDetailScreen}
+        options={{presentation: 'card'}}
+      />
     </Stack.Navigator>
   );
 }

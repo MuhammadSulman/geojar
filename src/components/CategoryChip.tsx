@@ -2,7 +2,7 @@ import React from 'react';
 import {Pressable, StyleSheet} from 'react-native';
 import {Text} from 'react-native-paper';
 import type {Category} from '@/types';
-import {useAppTheme} from '@/constants/theme';
+import {useAppTheme, withAlpha} from '@/constants/theme';
 
 interface Props {
   category: Category;
@@ -18,7 +18,7 @@ export default function CategoryChip({category, selected, onPress}: Props) {
         styles.chip,
         selected
           ? {
-              backgroundColor: category.color + '33',
+              backgroundColor: withAlpha(category.color, 0.2),
               borderColor: category.color,
             }
           : {

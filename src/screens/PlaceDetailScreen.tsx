@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useMemo, useState} from 'react';
+import React, {useMemo, useState} from 'react';
 import {
   View,
   ScrollView,
@@ -8,33 +8,30 @@ import {
   Platform,
   Pressable,
   StyleSheet,
-  ToastAndroid,
 } from 'react-native';
+import {KeyboardAwareScrollView} from 'react-native-keyboard-aware-scroll-view';
 import {Text, TextInput, Button, Chip, IconButton} from 'react-native-paper';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import MapLibreGL from '@maplibre/maplibre-react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import Share from 'react-native-share';
 import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
-import type {HomeStackParamList} from '@/navigation/types';
-import type {CategoryName, Place} from '@/types';
+import type {RootStackParamList} from '@/navigation/types';
+import type {CategoryName} from '@/types';
 import {CATEGORIES} from '@/constants/categories';
-import {getPlaceById} from '@/database/queries';
 import {usePlacesStore} from '@/store/placesStore';
 import {getMapStyle} from '@/constants/mapStyle';
-import {useAppTheme, type AppTheme} from '@/constants/theme';
+import {useAppTheme, withAlpha, type AppTheme} from '@/constants/theme';
 import {useIsDark} from '@/store/themeStore';
+import {useToast} from '@/components/Toast';
+import {EMOJI_LIST} from '@/constants/emojis';
 
-type Nav = NativeStackNavigationProp<HomeStackParamList, 'PlaceDetail'>;
-type Route = RouteProp<HomeStackParamList, 'PlaceDetail'>;
-
-const EMOJI_LIST = [
-  '📍', '⭐', '🏠', '🏢', '🏥', '🏫', '🏪', '🏬',
-  '☕', '🍔', '🍕', '🍜', '🌮', '🍦', '🎂', '🥗',
-  '🌳', '⛰️', '🏖️', '🌊', '🎾', '🎭', '🎵', '❤️',
-];
+type Nav = NativeStackNavigationProp<RootStackParamList, 'PlaceDetail'>;
+type Route = RouteProp<RootStackParamList, 'PlaceDetail'>;
 
 interface FormErrors {
   name?: string;
@@ -48,15 +45,21 @@ export default function PlaceDetailScreen() {
   const route = useRoute<Route>();
   const {placeId} = route.params;
   const theme = useAppTheme();
-  const styles = useMemo(() => makeStyles(theme), [theme]);
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => makeStyles(theme, insets.top), [theme, insets.top]);
   const isDark = useIsDark();
   const mapStyle = useMemo(() => getMapStyle(isDark), [isDark]);
 
+  const places = usePlacesStore(s => s.places);
+  const place = useMemo(
+    () => places.find(p => p.id === placeId),
+    [places, placeId],
+  );
   const updatePlace = usePlacesStore(s => s.updatePlace);
   const deletePlace = usePlacesStore(s => s.deletePlace);
   const toggleFavorite = usePlacesStore(s => s.toggleFavorite);
+  const {showToast} = useToast();
 
-  const [place, setPlace] = useState<Place | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
   const [editName, setEditName] = useState('');
@@ -67,17 +70,12 @@ export default function PlaceDetailScreen() {
   const [editNote, setEditNote] = useState('');
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSaving, setIsSaving] = useState(false);
-
-  const loadPlace = useCallback(async () => {
-    const p = await getPlaceById(placeId);
-    if (p) {
-      setPlace(p);
-    }
-  }, [placeId]);
-
-  useEffect(() => {
-    loadPlace();
-  }, [loadPlace]);
+  const [latitudeSelection, setLatitudeSelection] = useState<
+    {start: number; end: number} | undefined
+  >(undefined);
+  const [longitudeSelection, setLongitudeSelection] = useState<
+    {start: number; end: number} | undefined
+  >(undefined);
 
   const enterEditMode = () => {
     if (!place) {
@@ -136,9 +134,9 @@ export default function PlaceDetailScreen() {
         longitude: parseFloat(editLongitude),
         note: editNote.trim() || undefined,
       });
-      await loadPlace();
       setIsEditing(false);
       ReactNativeHapticFeedback.trigger('notificationSuccess');
+      showToast('Place updated');
     } catch {
       Alert.alert('Error', 'Failed to update place.');
     } finally {
@@ -151,7 +149,6 @@ export default function PlaceDetailScreen() {
       return;
     }
     await toggleFavorite(place.id);
-    await loadPlace();
   };
 
   const handleCopyCoords = () => {
@@ -159,9 +156,7 @@ export default function PlaceDetailScreen() {
       return;
     }
     Clipboard.setString(`${place.latitude}, ${place.longitude}`);
-    if (Platform.OS === 'android') {
-      ToastAndroid.show('Coordinates copied!', ToastAndroid.SHORT);
-    }
+    showToast('Coordinates copied', 'info');
     ReactNativeHapticFeedback.trigger('impactLight');
   };
 
@@ -221,6 +216,7 @@ export default function PlaceDetailScreen() {
           onPress: async () => {
             await deletePlace(placeId);
             ReactNativeHapticFeedback.trigger('notificationWarning');
+            showToast('Place deleted', 'error');
             navigation.goBack();
           },
         },
@@ -267,12 +263,19 @@ export default function PlaceDetailScreen() {
         )}
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <KeyboardAwareScrollView
+        contentContainerStyle={styles.scrollContent}
+        enableOnAndroid
+        keyboardShouldPersistTaps="handled"
+        enableResetScrollToCoords={false}
+        keyboardOpeningTime={250}
+        extraHeight={160}
+        extraScrollHeight={40}>
         <MapLibreGL.MapView
           style={styles.map}
           mapStyle={mapStyle}
-          scrollEnabled={false}
-          zoomEnabled={false}
+          scrollEnabled
+          zoomEnabled
           rotateEnabled={false}
           pitchEnabled={false}
           logoEnabled={false}
@@ -339,7 +342,7 @@ export default function PlaceDetailScreen() {
                   style={[
                     styles.chip,
                     editCategory === c.name && {
-                      backgroundColor: c.color + '33',
+                      backgroundColor: withAlpha(c.color, 0.2),
                     },
                   ]}
                   textStyle={
@@ -392,6 +395,13 @@ export default function PlaceDetailScreen() {
                   mode="outlined"
                   error={!!errors.latitude}
                   style={styles.input}
+                  selection={latitudeSelection}
+                  onFocus={() => {
+                    setLatitudeSelection({start: 0, end: 0});
+                    requestAnimationFrame(() =>
+                      setLatitudeSelection(undefined),
+                    );
+                  }}
                 />
                 {errors.latitude && (
                   <Text style={styles.errorText}>{errors.latitude}</Text>
@@ -412,6 +422,13 @@ export default function PlaceDetailScreen() {
                   mode="outlined"
                   error={!!errors.longitude}
                   style={styles.input}
+                  selection={longitudeSelection}
+                  onFocus={() => {
+                    setLongitudeSelection({start: 0, end: 0});
+                    requestAnimationFrame(() =>
+                      setLongitudeSelection(undefined),
+                    );
+                  }}
                 />
                 {errors.longitude && (
                   <Text style={styles.errorText}>{errors.longitude}</Text>
@@ -440,7 +457,7 @@ export default function PlaceDetailScreen() {
 
             {cat && (
               <Chip
-                style={[styles.detailChip, {backgroundColor: cat.color + '33'}]}
+                style={[styles.detailChip, {backgroundColor: withAlpha(cat.color, 0.2)}]}
                 textStyle={{color: cat.color}}>
                 {cat.emoji} {cat.name}
               </Chip>
@@ -461,9 +478,15 @@ export default function PlaceDetailScreen() {
 
             <View style={styles.actionRow}>
               <Pressable style={styles.actionBtn} onPress={handleToggleFavorite}>
-                <Text style={styles.actionIcon}>
-                  {place.isFavorite ? '⭐' : '☆'}
-                </Text>
+                <Icon
+                  name={place.isFavorite ? 'heart' : 'heart-outline'}
+                  size={26}
+                  color={
+                    place.isFavorite
+                      ? theme.appColors.favorite
+                      : theme.appColors.onSurface
+                  }
+                />
                 <Text style={styles.actionLabel}>Favorite</Text>
               </Pressable>
               <Pressable style={styles.actionBtn} onPress={handleCopyCoords}>
@@ -493,12 +516,12 @@ export default function PlaceDetailScreen() {
             </Button>
           </View>
         )}
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </View>
   );
 }
 
-const makeStyles = (t: AppTheme) =>
+const makeStyles = (t: AppTheme, topInset: number) =>
   StyleSheet.create({
     container: {
       flex: 1,
@@ -517,7 +540,7 @@ const makeStyles = (t: AppTheme) =>
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      paddingTop: 44,
+      paddingTop: topInset + 8,
       paddingHorizontal: 4,
       backgroundColor: t.appColors.background,
     },
@@ -526,7 +549,7 @@ const makeStyles = (t: AppTheme) =>
       alignItems: 'center',
     },
     scrollContent: {
-      paddingBottom: 40,
+      paddingBottom: 220,
     },
     map: {
       height: 200,
@@ -666,7 +689,7 @@ const makeStyles = (t: AppTheme) =>
     },
     emojiCellSelected: {
       borderColor: t.appColors.primary,
-      backgroundColor: t.appColors.primary + '22',
+      backgroundColor: withAlpha(t.appColors.primary, 0.13),
     },
     emojiPickerText: {
       fontSize: 24,

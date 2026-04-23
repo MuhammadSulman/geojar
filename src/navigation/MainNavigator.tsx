@@ -12,8 +12,6 @@ import type {
   SettingsStackParamList,
 } from './types';
 import HomeScreen from '@/screens/HomeScreen';
-import AddPlaceScreen from '@/screens/AddPlaceScreen';
-import PlaceDetailScreen from '@/screens/PlaceDetailScreen';
 import MapScreen from '@/screens/MapScreen';
 import SearchScreen from '@/screens/SearchScreen';
 import CategoryListScreen from '@/screens/CategoryListScreen';
@@ -31,8 +29,6 @@ function HomeStackScreen() {
   return (
     <HomeStack.Navigator screenOptions={{headerShown: false}}>
       <HomeStack.Screen name="Home" component={HomeScreen} />
-      <HomeStack.Screen name="AddPlace" component={AddPlaceScreen} />
-      <HomeStack.Screen name="PlaceDetail" component={PlaceDetailScreen} />
     </HomeStack.Navigator>
   );
 }
@@ -41,8 +37,6 @@ function MapStackScreen() {
   return (
     <MapStack.Navigator screenOptions={{headerShown: false}}>
       <MapStack.Screen name="Map" component={MapScreen} />
-      <MapStack.Screen name="AddPlace" component={AddPlaceScreen} />
-      <MapStack.Screen name="PlaceDetail" component={PlaceDetailScreen} />
     </MapStack.Navigator>
   );
 }
@@ -51,7 +45,6 @@ function CategoryStackScreen() {
   return (
     <CategoryStack.Navigator screenOptions={{headerShown: false}}>
       <CategoryStack.Screen name="CategoryList" component={CategoryListScreen} />
-      <CategoryStack.Screen name="PlaceDetail" component={PlaceDetailScreen} />
     </CategoryStack.Navigator>
   );
 }
@@ -60,7 +53,6 @@ function SearchStackScreen() {
   return (
     <SearchStack.Navigator screenOptions={{headerShown: false}}>
       <SearchStack.Screen name="Search" component={SearchScreen} />
-      <SearchStack.Screen name="PlaceDetail" component={PlaceDetailScreen} />
     </SearchStack.Navigator>
   );
 }

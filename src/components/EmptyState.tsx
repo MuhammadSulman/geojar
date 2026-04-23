@@ -9,6 +9,7 @@ interface Props {
   subtitle: string;
   onCTA?: () => void;
   ctaLabel?: string;
+  ctaIcon?: string;
 }
 
 export default function EmptyState({
@@ -17,6 +18,7 @@ export default function EmptyState({
   subtitle,
   onCTA,
   ctaLabel,
+  ctaIcon = 'plus',
 }: Props) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
@@ -30,6 +32,7 @@ export default function EmptyState({
       {onCTA && ctaLabel && (
         <Button
           mode="contained"
+          icon={ctaIcon}
           onPress={onCTA}
           style={styles.cta}
           buttonColor={theme.appColors.primary}>

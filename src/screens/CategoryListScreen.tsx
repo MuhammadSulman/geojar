@@ -1,16 +1,21 @@
 import React, {useCallback, useMemo} from 'react';
 import {View, SectionList, StyleSheet} from 'react-native';
 import {Text} from 'react-native-paper';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useNavigation, useFocusEffect} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {Place} from '@/types';
-import type {CategoryStackParamList} from '@/navigation/types';
+import type {CompositeNavigationProp} from '@react-navigation/native';
+import type {CategoryStackParamList, RootStackParamList} from '@/navigation/types';
 import {CATEGORIES} from '@/constants/categories';
 import {usePlacesStore} from '@/store/placesStore';
-import {useAppTheme, type AppTheme} from '@/constants/theme';
+import {useAppTheme, withAlpha, type AppTheme} from '@/constants/theme';
 import PlaceCard from '@/components/PlaceCard';
 
-type Nav = NativeStackNavigationProp<CategoryStackParamList, 'CategoryList'>;
+type Nav = CompositeNavigationProp<
+  NativeStackNavigationProp<CategoryStackParamList, 'CategoryList'>,
+  NativeStackNavigationProp<RootStackParamList>
+>;
 
 interface Section {
   title: string;
@@ -26,7 +31,8 @@ export default function CategoryListScreen() {
   const loadPlaces = usePlacesStore(s => s.loadPlaces);
   const toggleFavorite = usePlacesStore(s => s.toggleFavorite);
   const theme = useAppTheme();
-  const styles = useMemo(() => makeStyles(theme), [theme]);
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => makeStyles(theme, insets.top), [theme, insets.top]);
 
   useFocusEffect(
     useCallback(() => {
@@ -68,7 +74,7 @@ export default function CategoryListScreen() {
               {section.title}
             </Text>
             <View
-              style={[styles.badge, {backgroundColor: section.color + '33'}]}>
+              style={[styles.badge, {backgroundColor: withAlpha(section.color, 0.2)}]}>
               <Text style={[styles.badgeText, {color: section.color}]}>
                 {section.count}
               </Text>
@@ -92,7 +98,7 @@ export default function CategoryListScreen() {
   );
 }
 
-const makeStyles = (t: AppTheme) =>
+const makeStyles = (t: AppTheme, topInset: number) =>
   StyleSheet.create({
     container: {
       flex: 1,
@@ -100,7 +106,7 @@ const makeStyles = (t: AppTheme) =>
     },
     title: {
       color: t.appColors.onSurface,
-      paddingTop: 48,
+      paddingTop: topInset + 12,
       paddingHorizontal: 16,
       paddingBottom: 6,
       fontSize: 20,

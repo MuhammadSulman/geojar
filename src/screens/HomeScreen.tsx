@@ -8,17 +8,26 @@ import {
 } from 'react-native';
 import {Text} from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useNavigation, useFocusEffect} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
-import type {HomeStackParamList} from '@/navigation/types';
+import type {CompositeNavigationProp} from '@react-navigation/native';
+import type {HomeStackParamList, RootStackParamList, MainTabParamList} from '@/navigation/types';
+import type {BottomTabNavigationProp} from '@react-navigation/bottom-tabs';
 import type {Place} from '@/types';
 import {CATEGORIES} from '@/constants/categories';
 import {usePlacesStore} from '@/store/placesStore';
-import {useAppTheme, type AppTheme} from '@/constants/theme';
+import {useAppTheme, withAlpha, type AppTheme} from '@/constants/theme';
 import PlaceCard from '@/components/PlaceCard';
 import EmptyState from '@/components/EmptyState';
 
-type Nav = NativeStackNavigationProp<HomeStackParamList, 'Home'>;
+type Nav = CompositeNavigationProp<
+  NativeStackNavigationProp<HomeStackParamList, 'Home'>,
+  CompositeNavigationProp<
+    BottomTabNavigationProp<MainTabParamList>,
+    NativeStackNavigationProp<RootStackParamList>
+  >
+>;
 
 function getGreeting(): string {
   const h = new Date().getHours();
@@ -40,7 +49,8 @@ export default function HomeScreen() {
   const loadPlaces = usePlacesStore(s => s.loadPlaces);
   const toggleFavorite = usePlacesStore(s => s.toggleFavorite);
   const theme = useAppTheme();
-  const styles = useMemo(() => makeStyles(theme), [theme]);
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => makeStyles(theme, insets.top), [theme, insets.top]);
 
   useFocusEffect(
     useCallback(() => {
@@ -82,7 +92,7 @@ export default function HomeScreen() {
   }, [places]);
 
   const goToTab = (tab: 'MapTab' | 'SearchTab' | 'CategoryTab') => {
-    navigation.getParent()?.navigate(tab as never);
+    navigation.navigate(tab);
   };
 
   const handlePlacePress = (place: Place) => {
@@ -214,8 +224,8 @@ export default function HomeScreen() {
                 key={c.id}
                 style={({pressed}) => [
                   styles.catTile,
-                  {borderColor: c.color + '55'},
-                  pressed && {backgroundColor: c.color + '14'},
+                  {borderColor: withAlpha(c.color, 0.33)},
+                  pressed && {backgroundColor: withAlpha(c.color, 0.08)},
                 ]}
                 onPress={handleCategoryPress}>
                 <Text style={styles.catEmoji}>{c.emoji}</Text>
@@ -293,7 +303,7 @@ function StatCard({icon, label, value, color, theme}: StatProps) {
   );
 }
 
-const makeStyles = (t: AppTheme) =>
+const makeStyles = (t: AppTheme, topInset: number) =>
   StyleSheet.create({
     container: {
       flex: 1,
@@ -303,7 +313,7 @@ const makeStyles = (t: AppTheme) =>
       paddingBottom: 32,
     },
     header: {
-      paddingTop: 56,
+      paddingTop: topInset + 12,
       paddingHorizontal: 16,
       paddingBottom: 12,
     },
@@ -352,7 +362,7 @@ const makeStyles = (t: AppTheme) =>
       backgroundColor: 'transparent',
       borderRadius: 12,
       borderWidth: 1.5,
-      borderColor: t.appColors.primary + '55',
+      borderColor: withAlpha(t.appColors.primary, 0.33),
       paddingVertical: 12,
       gap: 6,
     },

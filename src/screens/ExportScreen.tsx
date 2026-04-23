@@ -3,6 +3,7 @@ import {View, Alert, StyleSheet} from 'react-native';
 import {Text, Button, IconButton} from 'react-native-paper';
 import RNFS from 'react-native-fs';
 import Share from 'react-native-share';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useNavigation} from '@react-navigation/native';
 import type {Place} from '@/types';
 import {getAllPlacesForExport} from '@/database/queries';
@@ -11,7 +12,8 @@ import {useAppTheme, type AppTheme} from '@/constants/theme';
 export default function ExportScreen() {
   const navigation = useNavigation();
   const theme = useAppTheme();
-  const styles = useMemo(() => makeStyles(theme), [theme]);
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => makeStyles(theme, insets.top), [theme, insets.top]);
   const [places, setPlaces] = useState<Place[]>([]);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -58,7 +60,7 @@ export default function ExportScreen() {
     setIsExporting(true);
     try {
       const filename = `geojar_export.${format}`;
-      const path = `${RNFS.DocumentDirectoryPath}/${filename}`;
+      const path = `${RNFS.CachesDirectoryPath}/${filename}`;
       const content =
         format === 'csv' ? buildCsv(places) : JSON.stringify(places, null, 2);
 
@@ -72,7 +74,7 @@ export default function ExportScreen() {
     } catch (err: unknown) {
       const error = err as {message?: string};
       if (error.message && !error.message.includes('User did not share')) {
-        Alert.alert('Error', 'Failed to export data.');
+        Alert.alert('Error', `Failed to export data.\n${error.message ?? ''}`);
       }
     } finally {
       setIsExporting(false);
@@ -126,7 +128,7 @@ export default function ExportScreen() {
   );
 }
 
-const makeStyles = (t: AppTheme) =>
+const makeStyles = (t: AppTheme, topInset: number) =>
   StyleSheet.create({
     container: {
       flex: 1,
@@ -135,7 +137,7 @@ const makeStyles = (t: AppTheme) =>
     header: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingTop: 44,
+      paddingTop: topInset + 8,
       paddingHorizontal: 4,
     },
     headerTitle: {

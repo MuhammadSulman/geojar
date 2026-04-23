@@ -2,36 +2,29 @@ import React, {useCallback, useMemo, useState} from 'react';
 import {
   View,
   ScrollView,
-  FlatList,
   Alert,
   ActivityIndicator,
-  Linking,
-  Platform,
   StyleSheet,
   Pressable,
 } from 'react-native';
 import {TextInput, Button, Text, Chip} from 'react-native-paper';
 import {KeyboardAwareScrollView} from 'react-native-keyboard-aware-scroll-view';
-import Geolocation from 'react-native-geolocation-service';
-import {check, request, PERMISSIONS, RESULTS} from 'react-native-permissions';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import type {RouteProp} from '@react-navigation/native';
-import type {HomeStackParamList} from '@/navigation/types';
+import type {RootStackParamList} from '@/navigation/types';
 import type {CategoryName} from '@/types';
 import {CATEGORIES} from '@/constants/categories';
+import {EMOJI_LIST} from '@/constants/emojis';
 import {usePlacesStore} from '@/store/placesStore';
-import {useAppTheme, type AppTheme} from '@/constants/theme';
+import {useLocation} from '@/hooks/useLocation';
+import {useAppTheme, withAlpha, type AppTheme} from '@/constants/theme';
+import {useToast} from '@/components/Toast';
 
-type Nav = NativeStackNavigationProp<HomeStackParamList, 'AddPlace'>;
-type Route = RouteProp<HomeStackParamList, 'AddPlace'>;
-
-const EMOJI_LIST = [
-  '📍', '⭐', '🏠', '🏢', '🏥', '🏫', '🏪', '🏬',
-  '☕', '🍔', '🍕', '🍜', '🌮', '🍦', '🎂', '🥗',
-  '🌳', '⛰️', '🏖️', '🌊', '🎾', '🎭', '🎵', '❤️',
-];
+type Nav = NativeStackNavigationProp<RootStackParamList, 'AddPlace'>;
+type Route = RouteProp<RootStackParamList, 'AddPlace'>;
 
 interface FormErrors {
   name?: string;
@@ -46,6 +39,8 @@ export default function AddPlaceScreen() {
   const route = useRoute<Route>();
   const addPlace = usePlacesStore(s => s.addPlace);
   const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const {showToast} = useToast();
   const styles = useMemo(() => makeStyles(theme), [theme]);
 
   const [name, setName] = useState('');
@@ -59,8 +54,14 @@ export default function AddPlaceScreen() {
   );
   const [note, setNote] = useState('');
   const [errors, setErrors] = useState<FormErrors>({});
-  const [isLocating, setIsLocating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [latitudeSelection, setLatitudeSelection] = useState<
+    {start: number; end: number} | undefined
+  >(undefined);
+  const [longitudeSelection, setLongitudeSelection] = useState<
+    {start: number; end: number} | undefined
+  >(undefined);
+  const {getCurrentLocation, isLoading: isLocating} = useLocation();
 
   const validate = useCallback((): boolean => {
     const e: FormErrors = {};
@@ -93,59 +94,22 @@ export default function AddPlaceScreen() {
     return Object.keys(e).length === 0;
   }, [name, category, emoji, latitude, longitude]);
 
-  const requestLocationPermission = async (): Promise<boolean> => {
-    const permission = Platform.select({
-      ios: PERMISSIONS.IOS.LOCATION_WHEN_IN_USE,
-      android: PERMISSIONS.ANDROID.ACCESS_FINE_LOCATION,
-    });
-    if (!permission) {
-      return false;
-    }
-
-    let status = await check(permission);
-    if (status === RESULTS.DENIED) {
-      status = await request(permission);
-    }
-
-    if (status === RESULTS.GRANTED || status === RESULTS.LIMITED) {
-      return true;
-    }
-
-    Alert.alert(
-      'Location Permission Required',
-      'Please enable location access in Settings to use this feature.',
-      [
-        {text: 'Cancel', style: 'cancel'},
-        {text: 'Open Settings', onPress: () => Linking.openSettings()},
-      ],
-    );
-    return false;
-  };
-
   const handleUseMyLocation = async () => {
-    const granted = await requestLocationPermission();
-    if (!granted) {
-      return;
+    try {
+      const loc = await getCurrentLocation();
+      setLatitude(loc.latitude.toFixed(6));
+      setLongitude(loc.longitude.toFixed(6));
+      setErrors(prev => ({
+        ...prev,
+        latitude: undefined,
+        longitude: undefined,
+      }));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to get location';
+      if (message !== 'Location permission not granted') {
+        Alert.alert('Location Error', message);
+      }
     }
-
-    setIsLocating(true);
-    Geolocation.getCurrentPosition(
-      position => {
-        setLatitude(position.coords.latitude.toFixed(6));
-        setLongitude(position.coords.longitude.toFixed(6));
-        setErrors(prev => ({
-          ...prev,
-          latitude: undefined,
-          longitude: undefined,
-        }));
-        setIsLocating(false);
-      },
-      error => {
-        setIsLocating(false);
-        Alert.alert('Location Error', error.message);
-      },
-      {enableHighAccuracy: true, timeout: 15000, maximumAge: 10000},
-    );
   };
 
   const handleSave = async () => {
@@ -166,9 +130,16 @@ export default function AddPlaceScreen() {
       });
 
       ReactNativeHapticFeedback.trigger('notificationSuccess');
-      Alert.alert('Success', 'Place saved!', [
-        {text: 'OK', onPress: () => navigation.goBack()},
-      ]);
+      // Coords present → this flow was launched from the Map's "Save this
+      // location" bar, so the user is about to land back on the Map.
+      // Offset the toast so it doesn't overlap the save bar.
+      const returningToMap = route.params?.latitude != null;
+      showToast(
+        'Place saved',
+        'success',
+        returningToMap ? {bottomOffset: 100} : undefined,
+      );
+      navigation.goBack();
     } catch {
       Alert.alert('Error', 'Failed to save place. Please try again.');
     } finally {
@@ -176,29 +147,25 @@ export default function AddPlaceScreen() {
     }
   };
 
-  const renderEmojiItem = ({item}: {item: string}) => (
-    <Pressable
-      style={[styles.emojiCell, item === emoji && styles.emojiCellSelected]}
-      onPress={() => {
-        setEmoji(item);
-        setErrors(prev => ({...prev, emoji: undefined}));
-      }}>
-      <Text style={styles.emojiText}>{item}</Text>
-    </Pressable>
-  );
-
   return (
     <KeyboardAwareScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[
+        styles.content,
+        {paddingTop: insets.top + 16},
+      ]}
       enableOnAndroid
-      extraScrollHeight={20}>
+      keyboardShouldPersistTaps="handled"
+      enableResetScrollToCoords={false}
+      keyboardOpeningTime={250}
+      extraHeight={160}
+      extraScrollHeight={40}>
       <Text variant="headlineMedium" style={styles.title}>
         Add Place
       </Text>
 
       <TextInput
-        label="Place Name"
+        label="Enter place name"
         value={name}
         onChangeText={v => {
           setName(v);
@@ -208,6 +175,7 @@ export default function AddPlaceScreen() {
         }}
         maxLength={60}
         mode="outlined"
+        dense
         error={!!errors.name}
         style={styles.input}
         right={<TextInput.Affix text={`${name.length}/60`} />}
@@ -233,7 +201,7 @@ export default function AddPlaceScreen() {
             }}
             style={[
               styles.chip,
-              category === cat.name && {backgroundColor: cat.color + '33'},
+              category === cat.name && {backgroundColor: withAlpha(cat.color, 0.2)},
             ]}
             textStyle={
               category === cat.name
@@ -252,14 +220,22 @@ export default function AddPlaceScreen() {
       <Text variant="labelLarge" style={styles.sectionLabel}>
         Emoji
       </Text>
-      <FlatList
-        data={EMOJI_LIST}
-        renderItem={renderEmojiItem}
-        keyExtractor={item => item}
-        numColumns={4}
-        scrollEnabled={false}
-        columnWrapperStyle={styles.emojiRow}
-      />
+      <View style={styles.emojiGrid}>
+        {EMOJI_LIST.map(item => (
+          <Pressable
+            key={item}
+            style={[
+              styles.emojiCell,
+              item === emoji && styles.emojiCellSelected,
+            ]}
+            onPress={() => {
+              setEmoji(item);
+              setErrors(prev => ({...prev, emoji: undefined}));
+            }}>
+            <Text style={styles.emojiText}>{item}</Text>
+          </Pressable>
+        ))}
+      </View>
       {errors.emoji && <Text style={styles.errorText}>{errors.emoji}</Text>}
 
       <Button
@@ -293,6 +269,11 @@ export default function AddPlaceScreen() {
             mode="outlined"
             error={!!errors.latitude}
             style={styles.input}
+            selection={latitudeSelection}
+            onFocus={() => {
+              setLatitudeSelection({start: 0, end: 0});
+              requestAnimationFrame(() => setLatitudeSelection(undefined));
+            }}
           />
           {errors.latitude && (
             <Text style={styles.errorText}>{errors.latitude}</Text>
@@ -313,6 +294,11 @@ export default function AddPlaceScreen() {
             mode="outlined"
             error={!!errors.longitude}
             style={styles.input}
+            selection={longitudeSelection}
+            onFocus={() => {
+              setLongitudeSelection({start: 0, end: 0});
+              requestAnimationFrame(() => setLongitudeSelection(undefined));
+            }}
           />
           {errors.longitude && (
             <Text style={styles.errorText}>{errors.longitude}</Text>
@@ -353,7 +339,7 @@ const makeStyles = (t: AppTheme) =>
     },
     content: {
       padding: 16,
-      paddingBottom: 40,
+      paddingBottom: 220,
     },
     title: {
       color: t.appColors.onSurface,
@@ -365,42 +351,42 @@ const makeStyles = (t: AppTheme) =>
     },
     sectionLabel: {
       color: t.appColors.onSurface,
-      marginTop: 16,
-      marginBottom: 8,
+      marginTop: 8,
+      marginBottom: 4,
     },
     chipRow: {
       flexDirection: 'row',
-      marginBottom: 4,
+      marginBottom: 0,
     },
     chip: {
       marginRight: 8,
       backgroundColor: t.appColors.surface,
     },
-    emojiRow: {
-      justifyContent: 'space-between',
-      marginBottom: 8,
+    emojiGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      marginHorizontal: -2,
     },
     emojiCell: {
-      flex: 1,
-      aspectRatio: 1,
-      maxWidth: '23%',
+      width: '19%',
+      aspectRatio: 1.4,
       justifyContent: 'center',
       alignItems: 'center',
       backgroundColor: t.appColors.surface,
-      borderRadius: 12,
-      marginHorizontal: 4,
+      borderRadius: 10,
+      margin: '0.5%',
       borderWidth: 2,
       borderColor: 'transparent',
     },
     emojiCellSelected: {
       borderColor: t.appColors.primary,
-      backgroundColor: t.appColors.primary + '22',
+      backgroundColor: withAlpha(t.appColors.primary, 0.13),
     },
     emojiText: {
       fontSize: 24,
     },
     locationBtn: {
-      marginTop: 16,
+      marginTop: 4,
       marginBottom: 8,
       borderColor: t.appColors.primary,
     },

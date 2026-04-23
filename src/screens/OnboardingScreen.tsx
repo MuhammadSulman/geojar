@@ -8,14 +8,9 @@ import {
   StyleSheet,
 } from 'react-native';
 import {Button, Text} from 'react-native-paper';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import {useNavigation} from '@react-navigation/native';
-import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
-import type {RootStackParamList} from '@/navigation/types';
 import {useLocation} from '@/hooks/useLocation';
 import {useAppTheme, type AppTheme} from '@/constants/theme';
-
-type Nav = NativeStackNavigationProp<RootStackParamList, 'Onboarding'>;
+import {useOnboardingStore} from '@/store/onboardingStore';
 
 const SLIDES = [
   {
@@ -37,7 +32,7 @@ const SLIDES = [
 ];
 
 export default function OnboardingScreen() {
-  const navigation = useNavigation<Nav>();
+  const completeOnboarding = useOnboardingStore(s => s.completeOnboarding);
   const {width} = useWindowDimensions();
   const scrollRef = useRef<ScrollView>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -63,9 +58,11 @@ export default function OnboardingScreen() {
   };
 
   const handleGetStarted = async () => {
-    await AsyncStorage.setItem('onboarding_complete', 'true');
     await requestPermission();
-    navigation.reset({index: 0, routes: [{name: 'Main'}]});
+    // Setting the flag flips RootNavigator's stack reactively; we don't
+    // need to call navigation.reset — Onboarding unmounts as the stack
+    // re-renders with only Main declared.
+    await completeOnboarding();
   };
 
   const isLast = activeIndex === SLIDES.length - 1;

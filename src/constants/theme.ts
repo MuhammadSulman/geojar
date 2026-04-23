@@ -98,3 +98,27 @@ export const LightTheme: AppTheme = {
 export function useAppTheme(): AppTheme {
   return useTheme() as AppTheme;
 }
+
+/**
+ * Append an alpha channel to a hex color. Accepts `#RGB`, `#RRGGBB`, or
+ * `#RRGGBBAA` and returns `#RRGGBBAA`. Alpha is clamped to [0, 1] and
+ * rounded to 2 hex digits.
+ */
+export function withAlpha(hex: string, alpha: number): string {
+  const clamped = Math.max(0, Math.min(1, alpha));
+  const byte = Math.round(clamped * 255)
+    .toString(16)
+    .padStart(2, '0')
+    .toUpperCase();
+
+  let rgb = hex.replace('#', '');
+  if (rgb.length === 3) {
+    rgb = rgb
+      .split('')
+      .map(c => c + c)
+      .join('');
+  } else if (rgb.length === 8) {
+    rgb = rgb.slice(0, 6);
+  }
+  return `#${rgb.toUpperCase()}${byte}`;
+}

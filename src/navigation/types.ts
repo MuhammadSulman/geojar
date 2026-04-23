@@ -1,7 +1,14 @@
 export type RootStackParamList = {
   Splash: undefined;
   Onboarding: undefined;
-  Main: undefined;
+  Main:
+    | {
+        screen?: keyof MainTabParamList;
+        params?: MapStackParamList['Map'];
+      }
+    | undefined;
+  AddPlace: {latitude?: number; longitude?: number} | undefined;
+  PlaceDetail: {placeId: string};
 };
 
 export type MainTabParamList = {
@@ -14,24 +21,18 @@ export type MainTabParamList = {
 
 export type HomeStackParamList = {
   Home: undefined;
-  AddPlace: {latitude?: number; longitude?: number} | undefined;
-  PlaceDetail: {placeId: string};
 };
 
 export type MapStackParamList = {
   Map: {focusLatitude?: number; focusLongitude?: number} | undefined;
-  AddPlace: {latitude?: number; longitude?: number} | undefined;
-  PlaceDetail: {placeId: string};
 };
 
 export type CategoryStackParamList = {
   CategoryList: undefined;
-  PlaceDetail: {placeId: string};
 };
 
 export type SearchStackParamList = {
   Search: undefined;
-  PlaceDetail: {placeId: string};
 };
 
 export type SettingsStackParamList = {

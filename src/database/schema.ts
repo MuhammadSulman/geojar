@@ -1,5 +1,3 @@
-import {CATEGORIES} from '@/constants/categories';
-
 export const CREATE_PLACES_TABLE = `
   CREATE TABLE IF NOT EXISTS places (
     id TEXT PRIMARY KEY NOT NULL,
@@ -24,7 +22,5 @@ export const CREATE_CATEGORIES_TABLE = `
   );
 `;
 
-export const SEED_CATEGORIES = CATEGORIES.map(
-  c =>
-    `INSERT OR IGNORE INTO categories (id, name, color, emoji) VALUES ('${c.id}', '${c.name}', '${c.color}', '${c.emoji}');`,
-);
+export const INSERT_CATEGORY_SQL =
+  'INSERT OR IGNORE INTO categories (id, name, color, emoji) VALUES (?, ?, ?, ?);';

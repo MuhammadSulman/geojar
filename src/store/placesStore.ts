@@ -1,16 +1,12 @@
 import {create} from 'zustand';
 import {immer} from 'zustand/middleware/immer';
-import {useMemo} from 'react';
-import {Place, CategoryName, SortOrder} from '@/types';
+import {Place} from '@/types';
 import * as queries from '@/database/queries';
 
 interface PlacesState {
   places: Place[];
   isLoading: boolean;
   error: string | null;
-  searchQuery: string;
-  activeCategory: CategoryName | null;
-  sortOrder: SortOrder;
 
   loadPlaces: () => Promise<void>;
   addPlace: (
@@ -19,19 +15,15 @@ interface PlacesState {
   updatePlace: (id: string, data: Partial<Place>) => Promise<void>;
   deletePlace: (id: string) => Promise<void>;
   toggleFavorite: (id: string) => Promise<void>;
-  setSearchQuery: (q: string) => void;
-  setActiveCategory: (cat: CategoryName | null) => void;
-  setSortOrder: (order: SortOrder) => void;
+  importPlaces: (data: unknown[]) => Promise<queries.ImportResult>;
+  deleteAllPlaces: () => Promise<void>;
 }
 
 export const usePlacesStore = create<PlacesState>()(
-  immer((set, get) => ({
+  immer(set => ({
     places: [],
     isLoading: false,
     error: null,
-    searchQuery: '',
-    activeCategory: null,
-    sortOrder: 'newest',
 
     loadPlaces: async () => {
       set(state => {
@@ -89,16 +81,12 @@ export const usePlacesStore = create<PlacesState>()(
     },
 
     toggleFavorite: async id => {
-      const place = get().places.find(p => p.id === id);
-      if (!place) {
-        return;
-      }
       try {
-        await queries.toggleFavorite(id, place.isFavorite);
+        const nowFavorite = await queries.toggleFavorite(id);
         set(state => {
           const idx = state.places.findIndex(p => p.id === id);
           if (idx !== -1) {
-            state.places[idx].isFavorite = !state.places[idx].isFavorite;
+            state.places[idx].isFavorite = nowFavorite;
           }
         });
       } catch (e) {
@@ -108,111 +96,21 @@ export const usePlacesStore = create<PlacesState>()(
       }
     },
 
-    setSearchQuery: q => {
+    importPlaces: async data => {
+      const result = await queries.importPlaces(data);
+      // Source of truth is the DB; reread to capture overwrites / merges.
+      const places = await queries.getAllPlaces();
       set(state => {
-        state.searchQuery = q;
+        state.places = places;
       });
+      return result;
     },
 
-    setActiveCategory: cat => {
+    deleteAllPlaces: async () => {
+      await queries.deleteAllPlaces();
       set(state => {
-        state.activeCategory = cat;
-      });
-    },
-
-    setSortOrder: order => {
-      set(state => {
-        state.sortOrder = order;
+        state.places = [];
       });
     },
   })),
 );
-
-function haversineDistance(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number,
-): number {
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const R = 6371;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) *
-      Math.cos(toRad(lat2)) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-interface UserLocation {
-  latitude: number;
-  longitude: number;
-}
-
-export function useFilteredPlaces(userLocation?: UserLocation): Place[] {
-  const places = usePlacesStore(s => s.places);
-  const searchQuery = usePlacesStore(s => s.searchQuery);
-  const activeCategory = usePlacesStore(s => s.activeCategory);
-  const sortOrder = usePlacesStore(s => s.sortOrder);
-
-  return useMemo(() => {
-    let filtered = places;
-
-    if (activeCategory) {
-      filtered = filtered.filter(p => p.category === activeCategory);
-    }
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        p =>
-          p.name.toLowerCase().includes(q) ||
-          (p.note && p.note.toLowerCase().includes(q)),
-      );
-    }
-
-    const sorted = [...filtered];
-
-    switch (sortOrder) {
-      case 'newest':
-        sorted.sort(
-          (a, b) =>
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-        );
-        break;
-      case 'oldest':
-        sorted.sort(
-          (a, b) =>
-            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-        );
-        break;
-      case 'az':
-        sorted.sort((a, b) => a.name.localeCompare(b.name));
-        break;
-      case 'nearest':
-        if (userLocation) {
-          sorted.sort(
-            (a, b) =>
-              haversineDistance(
-                userLocation.latitude,
-                userLocation.longitude,
-                a.latitude,
-                a.longitude,
-              ) -
-              haversineDistance(
-                userLocation.latitude,
-                userLocation.longitude,
-                b.latitude,
-                b.longitude,
-              ),
-          );
-        }
-        break;
-    }
-
-    return sorted;
-  }, [places, searchQuery, activeCategory, sortOrder, userLocation]);
-}

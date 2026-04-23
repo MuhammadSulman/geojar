@@ -3,21 +3,29 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
 import {Animated, StyleSheet, View} from 'react-native';
 import {Text} from 'react-native-paper';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import {useAppTheme} from '@/constants/theme';
 
 type Variant = 'success' | 'error' | 'info';
+
+interface ToastOptions {
+  bottomOffset?: number;
+}
 
 interface ToastMessage {
   text: string;
   variant: Variant;
+  bottomOffset?: number;
 }
 
 interface ToastContextValue {
-  showToast: (text: string, variant?: Variant) => void;
+  showToast: (text: string, variant?: Variant, options?: ToastOptions) => void;
 }
 
 const ToastContext = createContext<ToastContextValue>({
@@ -28,18 +36,23 @@ export function useToast() {
   return useContext(ToastContext);
 }
 
-const VARIANT_COLORS: Record<Variant, string> = {
-  success: '#16A34A',
-  error: '#EF4444',
-  info: '#3B82F6',
-};
-
 const AUTO_DISMISS = 2500;
 
 export function ToastProvider({children}: {children: React.ReactNode}) {
+  const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const translateY = useRef(new Animated.Value(100)).current;
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const variantColors = useMemo<Record<Variant, string>>(
+    () => ({
+      success: theme.appColors.primary,
+      error: theme.appColors.error,
+      info: theme.appColors.onSurface,
+    }),
+    [theme.appColors.primary, theme.appColors.error, theme.appColors.onSurface],
+  );
 
   const hide = useCallback(() => {
     Animated.timing(translateY, {
@@ -50,11 +63,11 @@ export function ToastProvider({children}: {children: React.ReactNode}) {
   }, [translateY]);
 
   const showToast = useCallback(
-    (text: string, variant: Variant = 'success') => {
+    (text: string, variant: Variant = 'success', options?: ToastOptions) => {
       if (timerRef.current) {
         clearTimeout(timerRef.current);
       }
-      setToast({text, variant});
+      setToast({text, variant, bottomOffset: options?.bottomOffset});
       translateY.setValue(100);
       Animated.spring(translateY, {
         toValue: 0,
@@ -82,7 +95,9 @@ export function ToastProvider({children}: {children: React.ReactNode}) {
           style={[
             styles.container,
             {
-              backgroundColor: VARIANT_COLORS[toast.variant],
+              backgroundColor: variantColors[toast.variant],
+              bottom:
+                (toast.bottomOffset ?? 0) + Math.max(insets.bottom + 16, 32),
               transform: [{translateY}],
             },
           ]}>
@@ -98,7 +113,6 @@ export function ToastProvider({children}: {children: React.ReactNode}) {
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 48,
     left: 16,
     right: 16,
     borderRadius: 12,
